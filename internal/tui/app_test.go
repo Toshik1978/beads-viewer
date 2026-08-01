@@ -1180,3 +1180,56 @@ func (s *appTestSuite) TestScrollKeysReachTheDetailPaneRegardlessOfFocus() {
 
 	s.NotEqual(before, ansi.Strip(m.View()))
 }
+
+// TestEnterOnACardOpensItInTheList pins keys.go's openSelectedInList: the
+// full-screen board has no detail pane, so Enter is how a card reaches one.
+func (s *appTestSuite) TestEnterOnACardOpensItInTheList() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	// Move off the first card so the assertion cannot pass by coincidence —
+	// the list's own default selection is its first row.
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	want := m.SelectedID()
+	s.Require().NotEmpty(want)
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	s.Equal(config.ViewList, tui.ViewKindForTest(m),
+		"Enter must land on the list, not merely select on the board")
+	s.Equal(want, m.SelectedID())
+}
+
+// TestEnterOnAnEmptyColumnDoesNothing pins that Enter is a silent no-op when
+// the board's cursor sits on a column with no issue under it.
+func (s *appTestSuite) TestEnterOnAnEmptyColumnDoesNothing() {
+	// A board column with no issues keeps the column selected with no issue
+	// under the cursor — see boardview's clamp. Enter there must be inert.
+	m := s.newModel([]beads.Issue{{ID: "bv-1", Title: "only", Status: beads.StatusOpen}})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	// Walk right past the populated column into an empty one.
+	for range 5 {
+		m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	}
+	s.Require().Empty(m.SelectedID(), "fixture assumption: cursor is on an empty column")
+
+	before := m.View()
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	s.Equal(before, m.View())
+}
+
+// TestEnterOutsideTheBoardChangesNothing pins that Enter is scoped to the
+// board: pressed from the list or tree view it does nothing.
+func (s *appTestSuite) TestEnterOutsideTheBoardChangesNothing() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	before := m.View()
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	s.Equal(before, m.View())
+}

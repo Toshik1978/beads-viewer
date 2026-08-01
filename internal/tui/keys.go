@@ -8,6 +8,7 @@ import (
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
 	"github.com/Toshik1978/beads-viewer/internal/config"
+	"github.com/Toshik1978/beads-viewer/internal/tui/listview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 )
 
@@ -33,6 +34,7 @@ type KeyMap struct {
 	ScrollUp   key.Binding
 	ScrollDown key.Binding
 	Focus      key.Binding
+	Open       key.Binding
 }
 
 // DefaultKeyMap returns bv's built-in bindings. There is no user-configurable
@@ -57,6 +59,7 @@ func DefaultKeyMap() KeyMap {
 		ScrollUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", "scroll detail up")),
 		ScrollDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "scroll detail down")),
 		Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus list / detail")),
+		Open:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open in list (board)")),
 	}
 }
 
@@ -248,6 +251,10 @@ func (m *Model) handleActionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case key.Matches(msg, m.keys.Yank):
 		return m.yank(), true
+	case key.Matches(msg, m.keys.Open):
+		m.openSelectedInList()
+
+		return nil, true
 	case msg.String() == "esc":
 		// C1: empty.go's emptyFilter message says "press esc to clear the
 		// filter", but that screen shows only once the box is already
@@ -326,4 +333,32 @@ func (m *Model) yank() tea.Cmd {
 	m.setStatus("copied "+issue.ID, false)
 
 	return tea.Batch(tea.SetClipboard(issue.ID), clearMessageAfter(clipboardMessageTTL, m.status.token))
+}
+
+// openSelectedInList switches to the list view with the board's selected
+// issue under the cursor. It is how a card reaches a detail pane, which the
+// full-screen board has no room for.
+//
+// Every failure is a silent no-op rather than a status message: there is
+// nothing the user could do differently. A failed SelectByID cannot happen
+// today — one filter feeds all three views, so anything on the board is in
+// the list — but SelectByID reports it, and switching views to land on an
+// unrelated row would be worse than not switching at all.
+func (m *Model) openSelectedInList() {
+	if m.active != boardSlot {
+		return
+	}
+
+	issue := m.views[boardSlot].Selected()
+	if issue == nil {
+		return
+	}
+
+	list, ok := m.views[0].(*listview.Model)
+	if !ok || !list.SelectByID(issue.ID) {
+		return
+	}
+
+	m.active, m.overlay.focus = 0, focusView
+	m.applyLayout(m.layout.Width, m.layout.Height)
 }

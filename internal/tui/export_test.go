@@ -13,6 +13,7 @@ import (
 	"charm.land/bubbles/v2/key"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
+	"github.com/Toshik1978/beads-viewer/internal/config"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 )
 
@@ -95,3 +96,7 @@ func (m *Model) StatusTokenForTest() int {
 // border deduction happens there rather than in Compute, and a test that
 // could only see Compute's own return value would not catch it.
 func ExportPaneHeights(l Layout) (list, detail int) { return l.paneHeights() }
+
+// ViewKindForTest reports which view is active, so a test can assert that a
+// key actually switched panes rather than only that selection moved.
+func ViewKindForTest(m *Model) config.ViewKind { return viewKindAt(m.active) }

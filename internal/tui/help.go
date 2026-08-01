@@ -87,7 +87,7 @@ func renderHelpBody(keys KeyMap, th theme.Theme, width, height int, note string)
 func helpGroups(keys KeyMap) []helpGroup {
 	return []helpGroup{
 		{"Global", []key.Binding{keys.Quit, keys.Help, keys.Yank, keys.Focus}},
-		{"Views", []key.Binding{keys.ViewList, keys.ViewTree, keys.ViewBoard}},
+		{"Views", []key.Binding{keys.ViewList, keys.ViewTree, keys.ViewBoard, keys.Open}},
 		{"Filtering", []key.Binding{
 			keys.Filter,
 			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "hide closed (tree)")),
