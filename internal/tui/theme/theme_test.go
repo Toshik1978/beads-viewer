@@ -115,3 +115,25 @@ func (s *themeTestSuite) TestTypeGlyphHandlesUnknownValues() {
 	s.NotEmpty(th.TypeGlyph(beads.IssueType("spike")),
 		"an unknown type still needs a glyph, or rows misalign")
 }
+
+func (s *themeTestSuite) TestFrameDistinguishesFocus() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+
+	unfocused := th.Frame(false).Render("x")
+	focused := th.Frame(true).Render("x")
+
+	s.NotEqual(unfocused, focused,
+		"the frame colour is the only indicator of which pane has focus")
+	s.Contains(unfocused, "╭", "the frame is a rounded border")
+	s.Contains(focused, "╭")
+}
+
+func (s *themeTestSuite) TestFrameStaysBackgroundAgnostic() {
+	th := theme.New(config.ThemeAuto, theme.BackgroundUnknown)
+
+	s.Equal(theme.SchemeAgnostic, th.Scheme)
+	// The agnostic palette sets Border and Accent from ANSI 0-15 slots, which
+	// every terminal maps to its own theme — so the frame still has a colour
+	// here, it just carries no assumption about the background behind it.
+	s.NotEqual(th.Frame(false).Render("x"), th.Frame(true).Render("x"))
+}

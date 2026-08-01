@@ -122,6 +122,23 @@ func (t Theme) Priority(p beads.Priority) lipgloss.Style {
 	return t.priorities[p.Clamp()]
 }
 
+// Frame returns the style a pane's border is drawn with. The colour is the
+// whole focus indicator, so the two must stay visibly different: Accent when
+// focused, Border otherwise.
+//
+// The colours are read back off the existing styles with GetForeground rather
+// than stored as two more fields, so there is exactly one place each colour is
+// chosen — the palette — and no way for a frame to drift from the text it
+// surrounds.
+func (t Theme) Frame(focused bool) lipgloss.Style {
+	edge := t.Border.GetForeground()
+	if focused {
+		edge = t.Accent.GetForeground()
+	}
+
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(edge)
+}
+
 // TypeGlyph returns the single-width marker for an issue type. Unknown types
 // get a neutral glyph rather than an empty string, because a missing glyph
 // shifts every column on that row.

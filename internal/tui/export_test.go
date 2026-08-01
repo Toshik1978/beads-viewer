@@ -90,3 +90,8 @@ func NewClearStatusMsgForTest(token int) ClearStatusMsg {
 func (m *Model) StatusTokenForTest() int {
 	return m.status.token
 }
+
+// ExportPaneHeights exposes Layout.paneHeights for the layout suite: the
+// border deduction happens there rather than in Compute, and a test that
+// could only see Compute's own return value would not catch it.
+func ExportPaneHeights(l Layout) (list, detail int) { return l.paneHeights() }

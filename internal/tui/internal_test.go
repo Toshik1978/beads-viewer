@@ -119,12 +119,16 @@ func (s *WhiteBoxSuite) TestResizeReachesEveryView() {
 	// space now that the pane exists, so this must ask Compute the same
 	// question resize does, not the pre-detail answer.
 	want := Compute(120, 40, true)
+	// paneHeights, not want.BodyHeight directly: a bordered layout (as this
+	// one is) deducts its own frame from the list pane's share, the same
+	// deduction applyLayout applies before calling SetSize.
+	wantHeight, _ := want.paneHeights()
 	for i := range m.views {
 		spy, ok := m.views[i].(*spyView)
 		s.Require().True(ok)
 		s.True(spy.resized, "view %d never received SetSize", i)
 		s.Equal(want.ListWidth, spy.width, "view %d got the wrong width", i)
-		s.Equal(want.BodyHeight, spy.height, "view %d got the wrong height", i)
+		s.Equal(wantHeight, spy.height, "view %d got the wrong height", i)
 	}
 }
 

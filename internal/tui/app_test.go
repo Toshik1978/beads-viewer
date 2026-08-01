@@ -83,6 +83,16 @@ func (s *appTestSuite) newTreeModel(issues []beads.Issue) *tui.Model {
 	return m
 }
 
+// sample is this suite's shared fixture: enough issues, of varied type and
+// status, to fill a pane and exercise selection.
+func (s *appTestSuite) sample() []beads.Issue {
+	return []beads.Issue{
+		{ID: "bv-1", Title: "first", IssueType: beads.TypeBug, Status: beads.StatusOpen},
+		{ID: "bv-2", Title: "second", IssueType: beads.TypeTask, Status: beads.StatusInProgress},
+		{ID: "bv-3", Title: "third", IssueType: beads.TypeEpic, Status: beads.StatusClosed},
+	}
+}
+
 func (s *appTestSuite) TestModelStaysSmall() {
 	// The rewrite exists because the previous Model had ~100 fields. This test
 	// is the tripwire; if it fails, move state into a view rather than raising
@@ -411,6 +421,33 @@ func (s *appTestSuite) TestJoinedFrameNeverExceedsTheTerminalHeightWithFilterOpe
 	}
 }
 
+func (s *appTestSuite) TestFramedPanesDrawABorder() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	frame := ansi.Strip(m.View())
+
+	s.Contains(frame, "╭", "each pane draws a rounded frame")
+	s.Contains(frame, "╯")
+	for line := range strings.SplitSeq(frame, "\n") {
+		s.LessOrEqual(ansi.StringWidth(line), 120,
+			"the frame must not push any row past the terminal edge")
+	}
+}
+
+func (s *appTestSuite) TestTerminalsTooSmallToFrameDrawNoBorder() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 9, Height: 40})
+
+	frame := ansi.Strip(m.View())
+
+	s.NotContains(frame, "╭",
+		"a terminal this narrow must spend every column on content")
+	for line := range strings.SplitSeq(frame, "\n") {
+		s.LessOrEqual(ansi.StringWidth(line), 9)
+	}
+}
+
 // TestPgDownScrollsTheDetailPaneRatherThanTheList pins keys.go's routing of
 // pgup/pgdown to the detail pane instead of the active view. Deleting that
 // routing block leaves every other test in this suite green, since
@@ -671,13 +708,22 @@ func (s *appTestSuite) TestTreeHiddenCountOnlyShowsOnTheTree() {
 // the character immediately after it (at column ListWidth) is what proves
 // the gutter is actually blank rather than glued to the detail pane's own
 // first character.
+//
+// This now targets a short terminal (bodyHeight below minBorderedBodyHeight)
+// rather than a tall one: at 120x40 both panes are framed (Task 1.1), and a
+// framed layout has no gutter at all — separatorWidth returns 0 and the two
+// borders separate the panes instead. 120x6 keeps the same side-by-side,
+// wide-enough-to-truncate shape this test was written for while staying
+// below the height floor Layout.Bordered checks, so the gutter fallback this
+// test guards is still the path actually exercised.
 func (s *appTestSuite) TestGutterSeparatesTruncatedTitleFromDetailPane() {
 	m := s.newModel([]beads.Issue{{
 		ID: "bv-1", Title: strings.Repeat("wide title ", 20), Status: beads.StatusOpen,
 	}})
-	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 6})
 
-	layout := tui.Compute(120, 40, true)
+	layout := tui.Compute(120, 6, true)
+	s.Require().False(layout.Bordered, "fixture assumption: this size must fall back to the gutter")
 
 	var row string
 	for line := range strings.SplitSeq(ansi.Strip(m.View()), "\n") {
@@ -693,6 +739,40 @@ func (s *appTestSuite) TestGutterSeparatesTruncatedTitleFromDetailPane() {
 	s.Require().Greater(len(runes), layout.ListWidth, "the row must reach into the gutter column")
 	s.Equal(' ', runes[layout.ListWidth],
 		"the gutter column must be blank, not glued to the detail pane")
+}
+
+// TestFrameSeparatesTitleFromDetailPaneWhenBordered is this suite's sibling
+// assertion for the bordered case: at 120x40 there is no gutter column (the
+// test above's own comment explains why), so what actually keeps a truncated
+// title from touching the detail pane's own text is the list pane's own
+// right-hand border character, immediately followed by the detail pane's
+// left-hand border character.
+func (s *appTestSuite) TestFrameSeparatesTitleFromDetailPaneWhenBordered() {
+	m := s.newModel([]beads.Issue{{
+		ID: "bv-1", Title: strings.Repeat("wide title ", 20), Status: beads.StatusOpen,
+	}})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	layout := tui.Compute(120, 40, true)
+	s.Require().True(layout.Bordered, "fixture assumption: this size must be framed")
+
+	var row string
+	for line := range strings.SplitSeq(ansi.Strip(m.View()), "\n") {
+		if strings.Contains(line, "…") {
+			row = line
+
+			break
+		}
+	}
+	s.Require().NotEmpty(row, "fixture assumption: the title must actually truncate")
+
+	runes := []rune(row)
+	// The row starts with the list pane's own left border, which shifts its
+	// content one column past ListWidth; its right border follows content at
+	// ListWidth+1, and the detail pane's left border immediately after that.
+	s.Require().Greater(len(runes), layout.ListWidth+2, "the row must reach into the frame")
+	s.Equal('│', runes[layout.ListWidth+1], "the list pane's own right border must follow its content")
+	s.Equal('│', runes[layout.ListWidth+2], "the detail pane's own left border must follow immediately")
 }
 
 // TestOverlaySwallowsKeys pins the routing handleKey documents: any key

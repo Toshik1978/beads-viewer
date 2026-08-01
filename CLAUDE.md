@@ -94,11 +94,12 @@ bookkeeping until nothing about it was reviewable in isolation. Every limit
 below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
-- Non-test Go: at most **6,300 lines** total (raised once, from 6,000, during
-  Task 7.1, for a correctness fix — see the commit history for that decision
-  recorded in full; the structural limits below are the ones that actually
-  detect the regression, and they were satisfied with margin when the cap
-  was raised).
+- Non-test Go: at most **6,800 lines** total (raised twice: from 6,000 to
+  6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
+  six interface features under the border/focus/board epic — see the commit
+  history for both decisions recorded in full. The structural limits below
+  are the ones that actually detect the regression this cap is a proxy for,
+  and they were satisfied with margin at each raise).
 - `cmd/bv/main.go`: at most **150 lines**.
 - No non-test source file exceeds **500 lines**. Test files are governed
   instead by one file per suite — a test file that maps to exactly one

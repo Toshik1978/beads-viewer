@@ -303,22 +303,24 @@ func (m *Model) body() string {
 	}
 }
 
-// joinPanes lays the active view and the detail pane out side by side (with
-// a blank gutter column between them — see gutterWidth in layout.go), one
-// above the other when layout.Stacked, or renders the active view alone when
-// there is no room for a detail pane (DetailWidth of 0, or a nil detail in a
-// test that builds Model directly rather than through NewModel).
+// joinPanes lays the active view and the detail pane out side by side — each
+// framed, or separated by a blank gutter when the terminal cannot afford a
+// frame (separator below) — one above the other when layout.Stacked, or
+// renders the active view alone when there is no room for a detail pane
+// (DetailWidth of 0, or a nil detail in a test that builds Model directly).
 func (m *Model) joinPanes() string {
-	list := m.views[m.active].View()
+	listHeight, detailHeight := m.layout.paneHeights()
+	listPane := m.frame(m.views[m.active].View(), m.layout.ListWidth, listHeight, false)
 	if m.detail == nil || m.layout.DetailWidth <= 0 {
-		return list
+		return listPane
 	}
 
+	detailPane := m.frame(m.detail.View(), m.layout.DetailWidth, detailHeight, false)
 	if m.layout.Stacked {
-		return lipgloss.JoinVertical(lipgloss.Left, list, m.detail.View())
+		return lipgloss.JoinVertical(lipgloss.Left, listPane, detailPane)
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, list, gutter(m.layout.BodyHeight), m.detail.View())
+	return lipgloss.JoinHorizontal(lipgloss.Top, listPane, m.separator(), detailPane)
 }
 
 // applySnapshot handles the result of a reload. An error leaves the previous

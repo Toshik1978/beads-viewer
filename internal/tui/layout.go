@@ -13,6 +13,11 @@ type Layout struct {
 	DetailWidth int
 	BodyHeight  int
 	Stacked     bool
+	// Bordered reports whether the terminal can afford a frame around each
+	// pane. Every other dimension here is already net of that frame, so a
+	// renderer reads this only to decide whether to draw one — never to
+	// re-derive a width.
+	Bordered bool
 }
 
 const (
@@ -26,10 +31,27 @@ const (
 	chromeHeight = 1
 	// gutterWidth is the blank column joinPanes (app.go) renders between the
 	// list and detail panes when side by side, so a truncated title's
-	// ellipsis never sits flush against the detail pane. It comes out of
+	// ellipsis never sits flush against the detail pane. It applies only to
+	// the unbordered fallback: a framed layout separates the panes with their
+	// own adjacent borders instead (separatorWidth below). It comes out of
 	// ListWidth's own share below, which is what keeps ListWidth +
 	// gutterWidth + DetailWidth from ever exceeding width.
 	gutterWidth = 1
+	// borderWidth and borderHeight are the columns and rows a framed pane
+	// spends on its own border — one on each side. They are deducted from the
+	// pane's content geometry before it reaches View.SetSize; a view handed
+	// its frame's outer size renders borderWidth cells wider than the frame
+	// drawn around it, which lipgloss then clips silently.
+	borderWidth  = 2
+	borderHeight = 2
+	// minBorderedPaneWidth and minBorderedBodyHeight are the smallest content
+	// area worth framing. Below either, panes render unframed: at that size
+	// the frame costs a larger share of the pane than the content it would
+	// contain. minBorderedBodyHeight is 6 rather than 3 because a stacked
+	// layout halves the body first, so each half needs its own two frame rows
+	// plus a content row.
+	minBorderedPaneWidth  = 8
+	minBorderedBodyHeight = 6
 )
 
 // Compute derives pane geometry from the terminal size.
@@ -42,23 +64,66 @@ func Compute(width, height int, showDetail bool) Layout {
 	width = max(width, 0)
 	height = max(height, 0)
 
-	layout := Layout{Width: width, Height: height, BodyHeight: max(height-chromeHeight, 0)}
+	l := Layout{
+		Width:      width,
+		Height:     height,
+		BodyHeight: max(height-chromeHeight, 0),
+	}
+	l.Bordered = fitsBorders(width, l.BodyHeight)
 
 	switch {
 	case !showDetail:
-		layout.ListWidth = width
+		l.ListWidth = width
 	case width < splitThreshold:
 		// Stacked panes both run the full terminal width, one above the
 		// other, so there is no shared row for a gutter to protect.
-		layout.Stacked = true
-		layout.ListWidth = width
-		layout.DetailWidth = width
+		l.Stacked = true
+		l.ListWidth, l.DetailWidth = width, width
 	default:
-		layout.ListWidth = max(int(float64(width)*listShare)-gutterWidth, 0)
-		layout.DetailWidth = max(width-layout.ListWidth-gutterWidth, 0)
+		sep := l.separatorWidth()
+		l.ListWidth = max(int(float64(width)*listShare)-sep, 0)
+		l.DetailWidth = max(width-l.ListWidth-sep, 0)
 	}
 
-	return layout
+	return l.deductBorders()
+}
+
+// fitsBorders reports whether width x bodyHeight can afford a frame around
+// each pane. Below either floor the panes render unframed rather than
+// surrendering most of a small terminal to decoration.
+func fitsBorders(width, bodyHeight int) bool {
+	return width >= minBorderedPaneWidth+borderWidth &&
+		bodyHeight >= minBorderedBodyHeight
+}
+
+// separatorWidth is the blank column between side-by-side panes. A framed
+// layout has none: the two adjacent borders already separate the panes, and
+// keeping the gutter as well would leave a visible three-cell channel.
+func (l Layout) separatorWidth() int {
+	if l.Bordered {
+		return 0
+	}
+
+	return gutterWidth
+}
+
+// deductBorders takes each pane's frame out of its own content width.
+//
+// Heights are deducted in paneHeights instead, not here: BodyHeight is also
+// the height the empty screen (empty.go) and the help overlay (help.go)
+// render into, and neither of those is framed. Deducting rows here would
+// shrink both of them by two for a border they never draw.
+func (l Layout) deductBorders() Layout {
+	if !l.Bordered {
+		return l
+	}
+
+	l.ListWidth = max(l.ListWidth-borderWidth, 0)
+	if l.DetailWidth > 0 {
+		l.DetailWidth = max(l.DetailWidth-borderWidth, 0)
+	}
+
+	return l
 }
 
 // gutter renders the blank column joinPanes places between the list and
@@ -74,7 +139,8 @@ func gutter(height int) string {
 }
 
 // paneHeights splits l's BodyHeight between the list and detail panes: equal
-// shares when stacked, or the full height for both when side by side.
+// shares when stacked, or the full height for both when side by side. When
+// Bordered, each pane's own frame is then deducted from its share.
 // Model.applyLayout and applyBackground (app.go, rebuilding the detail pane
 // after a scheme change) both need this.
 func (l Layout) paneHeights() (list, detail int) {
@@ -82,6 +148,10 @@ func (l Layout) paneHeights() (list, detail int) {
 	if l.Stacked {
 		list = l.BodyHeight / 2
 		detail = l.BodyHeight - list
+	}
+	if l.Bordered {
+		list = max(list-borderHeight, 0)
+		detail = max(detail-borderHeight, 0)
 	}
 
 	return list, detail
