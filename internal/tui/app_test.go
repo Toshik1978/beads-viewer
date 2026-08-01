@@ -93,6 +93,19 @@ func (s *appTestSuite) sample() []beads.Issue {
 	}
 }
 
+// longIssue is an issue whose description cannot fit a 40-row detail pane, so
+// scrolling it actually changes what is rendered.
+func longIssue() beads.Issue {
+	body := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 200)
+
+	return beads.Issue{
+		ID:          "bv-1",
+		Title:       "long",
+		Status:      beads.StatusOpen,
+		Description: body,
+	}
+}
+
 func (s *appTestSuite) TestModelStaysSmall() {
 	// The rewrite exists because the previous Model had ~100 fields. This test
 	// is the tripwire; if it fails, move state into a view rather than raising
@@ -1080,4 +1093,55 @@ func (s *appTestSuite) TestBackgroundNoteJoinsTheCentredOverlay() {
 	s.Require().NotEmpty(noteLine, "fixture assumption: the note must actually render")
 	s.NotEqual(strings.TrimLeft(noteLine, " "), noteLine,
 		"the note must be centred alongside the rest of the overlay, not flush against column 0")
+}
+
+// TestFocusedDetailPaneTakesTheNavigationKeys pins keys.go's handleKey: once
+// Tab has moved focus onto the detail pane, every key the global bindings did
+// not consume — j included, not just pgup/pgdown — goes to the detail pane's
+// own viewport rather than the active view.
+func (s *appTestSuite) TestFocusedDetailPaneTakesTheNavigationKeys() {
+	m := s.newModel([]beads.Issue{longIssue(), {ID: "bv-2", Title: "second", Status: beads.StatusOpen}})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	selected := m.SelectedID()
+	before := ansi.Strip(m.View())
+	for range 5 {
+		m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+
+	s.Equal(selected, m.SelectedID(),
+		"the view's cursor must not move while the detail pane holds focus")
+	s.NotEqual(before, ansi.Strip(m.View()), "the detail pane must have scrolled")
+}
+
+// TestUnfocusedDetailPaneLeavesTheKeysToTheView is the mirror of
+// TestFocusedDetailPaneTakesTheNavigationKeys: with focus left on the view
+// (the zero value), j still moves the view's own cursor rather than
+// scrolling a detail pane the user has not focused.
+func (s *appTestSuite) TestUnfocusedDetailPaneLeavesTheKeysToTheView() {
+	m := s.newModel([]beads.Issue{longIssue(), {ID: "bv-2", Title: "second", Status: beads.StatusOpen}})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	s.Equal("bv-1", m.SelectedID())
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	s.Equal("bv-2", m.SelectedID(),
+		"with the view focused, j moves the view's own cursor")
+}
+
+// TestScrollKeysReachTheDetailPaneRegardlessOfFocus pins the other half of
+// handleKey's rule: pgup/pgdown are bound to the detail pane specifically
+// (see ScrollUp/ScrollDown's comment in DefaultKeyMap), so they must keep
+// reaching it even while focus sits on the view — unlike j, which only
+// reaches the detail pane once focus has moved there.
+func (s *appTestSuite) TestScrollKeysReachTheDetailPaneRegardlessOfFocus() {
+	m := s.newModel([]beads.Issue{longIssue()})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// View focused — pgdown is bound to the detail pane specifically.
+	before := ansi.Strip(m.View())
+	m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+
+	s.NotEqual(before, ansi.Strip(m.View()))
 }

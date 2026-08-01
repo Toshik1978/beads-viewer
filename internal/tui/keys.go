@@ -131,16 +131,20 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// pgup/pgdown go to the detail pane rather than the active view whenever
-	// the pane is actually on screen — see ScrollUp/ScrollDown's comment in
-	// DefaultKeyMap for why these two keys specifically need to be routed
-	// away from the list. m.detail is nil-guarded here for the same reason
-	// joinPanes, resize and syncDetail all guard it: a Model built directly
-	// rather than through NewModel (as WhiteBoxSuite's spy-based tests do)
-	// has no detail pane, and DetailWidth alone does not rule that out.
-	if m.detail != nil && m.layout.DetailWidth > 0 &&
-		(key.Matches(msg, m.keys.ScrollUp) || key.Matches(msg, m.keys.ScrollDown)) {
-		return m.detail.Update(msg)
+	// Focus decides who gets what is left. A focused detail pane takes every
+	// key the global bindings did not consume, not a hand-picked subset: a
+	// model that forwarded only up and down would leave g, home and the rest
+	// silently moving a cursor the user cannot see. pgup/pgdown reach the
+	// detail pane either way — see ScrollUp/ScrollDown's comment in
+	// DefaultKeyMap for why those two are bound to it specifically, and
+	// detailOnScreen for why both a nil pane and a zero width count as absent.
+	if m.detailOnScreen() {
+		if m.overlay.focus == focusDetail {
+			return m.detail.Update(msg)
+		}
+		if key.Matches(msg, m.keys.ScrollUp) || key.Matches(msg, m.keys.ScrollDown) {
+			return m.detail.Update(msg)
+		}
 	}
 
 	return m.views[m.active].Update(msg)
