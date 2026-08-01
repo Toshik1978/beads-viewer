@@ -218,6 +218,11 @@ func (m *Model) handleViewSwitchKey(msg tea.KeyPressMsg) bool {
 		return false
 	}
 
+	// The layout depends on which view is active — the board takes the whole
+	// body — so a view switch has to recompute it. Without this the board
+	// stays sized for a split it no longer has until the next resize.
+	m.applyLayout(m.layout.Width, m.layout.Height)
+
 	return true
 }
 

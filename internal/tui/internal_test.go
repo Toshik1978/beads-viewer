@@ -168,6 +168,45 @@ func (s *WhiteBoxSuite) TestTabIsANoOpWithNoDetailPaneOnScreen() {
 		"with nothing to focus, Tab must leave focus where it was")
 }
 
+// TestBoardGetsTheWholeBodyWidth pins that the board is laid out with no
+// detail pane beside it. A spy is what makes this observable: a real board's
+// View() does not report the width it was handed, and inferring it from the
+// rendered frame cannot tell "full width" apart from "split, but the detail
+// pane happened to render nothing".
+func (s *WhiteBoxSuite) TestBoardGetsTheWholeBodyWidth() {
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	m := &Model{keys: DefaultKeyMap(), views: spies, active: boardSlot}
+
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	want := Compute(120, 40, false)
+	s.Zero(want.DetailWidth, "fixture assumption: no detail pane without one")
+	board, ok := m.views[boardSlot].(*spyView)
+	s.Require().True(ok)
+	s.Equal(want.ListWidth, board.width)
+}
+
+// TestSwitchingToTheBoardRelaysOutWithoutAResize is the trap: applyLayout
+// used to run only on WindowSizeMsg, so a view switch left the board sized
+// for a split it no longer has until the terminal happened to be resized.
+func (s *WhiteBoxSuite) TestSwitchingToTheBoardRelaysOutWithoutAResize() {
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	m := &Model{keys: DefaultKeyMap(), views: spies, active: 0}
+
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	board, ok := m.views[boardSlot].(*spyView)
+	s.Require().True(ok)
+	s.Equal(Compute(120, 40, false).ListWidth, board.width)
+
+	// And back again, or leaving the board would strand the two-pane layout.
+	m.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	list, ok := m.views[0].(*spyView)
+	s.Require().True(ok)
+	s.Equal(Compute(120, 40, true).ListWidth, list.width)
+}
+
 // TestResizeGivesTheDetailPaneItsOwnWidth pins that resize hands the detail
 // pane layout.DetailWidth specifically, not some other value such as
 // ListWidth by copy-paste accident.

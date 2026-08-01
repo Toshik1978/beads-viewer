@@ -157,13 +157,21 @@ func (l Layout) paneHeights() (list, detail int) {
 	return list, detail
 }
 
+// showsDetail reports whether the active view gets a detail pane beside it.
+// The board does not: its columns are the content, and squeezing them into
+// listShare of the terminal to make room for a pane describing one card is a
+// worse trade than sending the user to the list, which Enter does.
+func (m *Model) showsDetail() bool {
+	return m.active != boardSlot
+}
+
 // applyLayout recomputes pane geometry for width x height and propagates it
 // to every view, not only the active one, and the detail pane. Called on
 // every WindowSizeMsg, and from handleGlobalKey/handleFilterKey (keys.go)
 // whenever the filter overlay opens or closes without a resize — View
 // (app.go) then appends a row chromeHeight above never reserves (C3).
 func (m *Model) applyLayout(width, height int) {
-	m.layout = Compute(width, height, true)
+	m.layout = Compute(width, height, m.showsDetail())
 	if m.overlay.kind == overlayFilter {
 		m.layout.BodyHeight = max(m.layout.BodyHeight-1, 0)
 	}

@@ -699,6 +699,37 @@ func (s *appTestSuite) TestBoardViewWiringRendersABoardSpecificArtefact() {
 	s.Contains(m.View(), "┌", "the board view must render its own card border, not a blank pane")
 }
 
+// TestBoardDrawsNoDetailPaneAndNoSecondFrame pins that the board, once
+// active, gets the whole body: one frame per row, and no line wider than the
+// terminal — not a two-pane split with the detail pane's own border folded
+// in beside it.
+func (s *appTestSuite) TestBoardDrawsNoDetailPaneAndNoSecondFrame() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	for line := range strings.SplitSeq(ansi.Strip(m.View()), "\n") {
+		s.LessOrEqual(ansi.StringWidth(line), 120)
+		s.LessOrEqual(strings.Count(line, "╭"), 1,
+			"a full-screen board has one frame, not two")
+	}
+}
+
+// TestTabDoesNothingOnTheBoard pins that Tab, which toggles focus between the
+// active view and the detail pane, is a no-op once the board has no detail
+// pane to focus.
+func (s *appTestSuite) TestTabDoesNothingOnTheBoard() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	before := m.View()
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	// There is no detail pane to focus, and s — not tab — cycles swimlanes.
+	s.Equal(before, m.View())
+}
+
 // TestBoardLaneOnlyShowsOnTheBoard is I5's Model-level guard for
 // boardLaneName's active-view check. status_test.go's
 // TestNeverShowsTheLaneOutsideTheBoard calls renderStatus directly with
