@@ -8,13 +8,19 @@
 package uitext
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
 
 // ellipsis marks a truncated string. One cell wide, unlike "...".
 const ellipsis = "…"
+
+// AgeWidth is the widest string RelativeAge returns ("11mo"), so a caller can
+// reserve the column before knowing what will go in it.
+const AgeWidth = 4
 
 // Truncate shortens s to at most width terminal cells.
 //
@@ -48,4 +54,41 @@ func Sanitize(s string) string {
 
 		return r
 	}, s)
+}
+
+// RelativeAge renders how long before now then was, in at most AgeWidth
+// cells: "now", "12m", "3h", "2d", "5w", "8mo", "2y".
+//
+// now is a parameter rather than time.Now() read here, which is what makes
+// this pure and its table test deterministic — and gochecknoglobals rules out
+// a package-level clock anyway.
+//
+// A zero then returns "" rather than an age measured from year 1: that is
+// what a record with no updated_at produces, and "2025y" would be both wrong
+// and too wide. A then in the future returns "now" — clock skew between the
+// machine that wrote the record and this one is ordinary.
+func RelativeAge(now, then time.Time) string {
+	if then.IsZero() {
+		return ""
+	}
+
+	d := now.Sub(then)
+	if d < time.Minute {
+		return "now"
+	}
+
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dw", int(d.Hours()/(24*7)))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
+	default:
+		return fmt.Sprintf("%dy", int(d.Hours()/(24*365)))
+	}
 }
