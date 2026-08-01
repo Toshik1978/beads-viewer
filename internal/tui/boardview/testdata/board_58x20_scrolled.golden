@@ -1,6 +1,6 @@
-<1   In Progress (1)         Blocked (0)             2>  
+<2   Blocked (0)             Closed (1)              1>  
      0 ready · 0 blocked     0 ready · 0 blocked         
-     ┌─────────────────────┐                             
-     │· c                P0│                             
-     │in flight            │                             
-     └─────────────────────┘                             
+                             ┌─────────────────────┐     
+                             │· d                P0│     
+                             │finished             │     
+                             └─────────────────────┘     

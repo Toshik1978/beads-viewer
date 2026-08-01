@@ -36,9 +36,11 @@ func (s *boardTestSuite) model(issues []beads.Issue, w, h int) *boardview.Model 
 }
 
 // jumpToColumn is a test-local stand-in for the exported JumpToColumn method
-// I9 removed (zero non-test callers): every call site below starts from a
-// freshly built model sitting at column 0, so stepping MoveRight i times
-// lands on the same column JumpToColumn(i) would have.
+// I9 removed (zero non-test callers): it steps MoveRight i times from a
+// freshly built model sitting at column 0. That no longer lands on raw
+// column index i in general — MoveLeft/MoveRight skip empty columns
+// (bv-llf.2.1) — so which column i actually reaches depends on the fixture;
+// see each call site's own comment for where it lands there.
 func jumpToColumn(m *boardview.Model, i int) {
 	for range i {
 		m.MoveRight()
@@ -52,6 +54,38 @@ func (s *boardTestSuite) sample() []beads.Issue {
 		{ID: "c", Title: "in flight", Status: beads.StatusInProgress},
 		{ID: "d", Title: "finished", Status: beads.StatusClosed},
 	}
+}
+
+// gapped puts an empty column between two populated ones under the status
+// lane, which is the shape the skip exists for — a fixture without the gap
+// passes whether or not MoveRight skips anything.
+func (s *boardTestSuite) gapped() []beads.Issue {
+	return []beads.Issue{
+		{ID: "bv-1", Title: "open one", Status: beads.StatusOpen},
+		{ID: "bv-2", Title: "blocked one", Status: beads.StatusBlocked},
+	}
+}
+
+// columnIndexOf finds which of the board's status columns holds id, by
+// asking Group directly for the same grouping s.gapped() feeds into m — the
+// suite has no accessor for a Model's own column index, and going through
+// Group instead of driving the cursor with MoveLeft/MoveRight keeps this
+// helper independent of the very skipping behaviour the tests that use it
+// are trying to pin.
+func (s *boardTestSuite) columnIndexOf(m *boardview.Model, id string) int {
+	s.T().Helper()
+
+	for i, col := range boardview.Group(beads.NewSnapshot(s.gapped()), m.Lane()) {
+		for _, issue := range col.Issues {
+			if issue.ID == id {
+				return i
+			}
+		}
+	}
+
+	s.Fail("id not found in any column", id)
+
+	return -1
 }
 
 func (s *boardTestSuite) TestRendersEveryColumnHeader() {
@@ -103,26 +137,123 @@ func (s *boardTestSuite) TestMovingIntoAShorterColumnClampsTheRow() {
 	s.Equal("p1", m.SelectedID())
 }
 
-func (s *boardTestSuite) TestEmptyColumnIsReachableAndSelectsNothing() {
-	// Skipping empty columns would make them unreachable and hide the fact
-	// that they are empty, which is itself information. The issue in the
-	// LAST column (F9) is load-bearing: with only column 0 populated (the
-	// original fixture), a clamp that skips a rightward jump on an empty
-	// column past every other empty column and lands wherever the next
-	// populated column happens to be produces the exact same observable
-	// outcome here (Selected nil, SelectedID "") as the correct behaviour,
-	// because there was nothing further right to skip to. Putting an issue
-	// in "Other" — with Closed still empty in between — gives a
-	// skip-forward mutant somewhere to wrongly land.
+// TestClampStillResolvesToAnEmptyColumnAfterARegroup replaces the older
+// TestEmptyColumnIsReachableAndSelectsNothing, which pinned exactly the
+// behaviour this task removes: MoveRight landing deliberately on an empty
+// column. That is now covered from the other direction by
+// TestRightSkipsAnEmptyColumn and friends below, plus TestEmptyColumnsStillRender
+// for the "still on screen" half of the old test's name. What survives from
+// it is clamp's own contract, which this task explicitly leaves unchanged: a
+// regrouping can still strand the cursor on a stale row, with no id left to
+// preserve the selection by, and clamp alone (not movement) has to resolve
+// that safely.
+//
+// The fixture is deliberately NOT "the column becomes wholly empty": that
+// version passes with clamp's body deleted entirely, because Selected()'s
+// own row < 0 || row >= len(issues) bounds check already reads row 0 against
+// a 0-issue column as "nothing selected" whether or not clamp ever ran —
+// verified by emptying clamp and watching that version stay green (see this
+// task's review round). Leaving the column with exactly one issue, and the
+// stale row at 2 rather than 0, is what makes clamp's own pull-back the only
+// thing that can produce the right answer: without it, row 2 against a
+// 1-issue column is just as clearly out of range as row 2 against a 0-issue
+// one, but WITH it, row clamps to 0 and lands on that one issue rather than
+// staying stuck reading "nothing selected".
+func (s *boardTestSuite) TestClampStillResolvesToAnEmptyColumnAfterARegroup() {
 	m := s.model([]beads.Issue{
-		{ID: "a", Title: "a", Status: beads.StatusOpen},
-		{ID: "z", Title: "z", Status: beads.StatusDeferred}, // lands in the catch-all "Other" column
+		{ID: "b1", Title: "b1", Status: beads.StatusBlocked},
+		{ID: "b2", Title: "b2", Status: beads.StatusBlocked},
+		{ID: "b3", Title: "b3", Status: beads.StatusBlocked},
 	}, 140, 30)
+	s.Require().True(m.SelectByID("b3"), "fixture sanity: the cursor starts at row 2 of the Blocked column")
 
-	jumpToColumn(m, 2) // Blocked: empty, with Closed (also empty) and Other (populated) ahead of it
-	s.Nil(m.Selected())
-	s.Empty(m.SelectedID())
+	// None of "b1".."b3" survive into the new snapshot, so regroup's
+	// find(preserveID) fails and the cursor's row stays stale at 2 — one
+	// past the new Blocked column's only row (0).
+	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
+		{ID: "other", Title: "other", Status: beads.StatusBlocked},
+	}))
+
+	s.Equal("other", m.SelectedID(),
+		"clamp must pull the stale row 2 back onto the column's one remaining issue at row 0")
 	s.NotPanics(func() { _ = m.View() })
+}
+
+func (s *boardTestSuite) TestRightSkipsAnEmptyColumn() {
+	m := s.model(s.gapped(), 200, 20)
+	s.Require().Equal("bv-1", m.SelectedID())
+
+	before := s.columnIndexOf(m, "bv-1")
+	m.MoveRight()
+
+	s.Equal("bv-2", m.SelectedID(),
+		"the cursor must land on the next column that holds something")
+	s.Greater(s.columnIndexOf(m, "bv-2"), before+1,
+		"fixture assumption: at least one empty column sat between them")
+}
+
+func (s *boardTestSuite) TestLeftSkipsAnEmptyColumn() {
+	m := s.model(s.gapped(), 200, 20)
+	s.Require().True(m.SelectByID("bv-2"))
+
+	m.MoveLeft()
+
+	s.Equal("bv-1", m.SelectedID())
+}
+
+func (s *boardTestSuite) TestMovingPastTheLastPopulatedColumnStaysPut() {
+	m := s.model(s.gapped(), 200, 20)
+	s.Require().True(m.SelectByID("bv-2"))
+
+	for range 5 {
+		m.MoveRight()
+	}
+
+	s.Equal("bv-2", m.SelectedID(),
+		"with nothing populated to the right, the cursor does not move")
+}
+
+// TestAnAllEmptyBoardDoesNotMoveOrPanic asserts the frame itself, not just
+// SelectedID, stays put: SelectedID() == "" holds on an all-empty board
+// however the cursor moves, so that assertion alone is satisfied by the
+// m.col++ mutant Step 5 exists to catch just as much as by the fix. Width 58
+// is narrow enough that all 5 status columns do not fit at once (see
+// visibleLayout), so a cursor that ends up somewhere other than column 0
+// slides the render window and changes the ANSI-stripped frame.
+//
+// A single MoveRight/MoveLeft pair is not enough to pin this: under the
+// m.col++ mutant, one raw MoveRight only reaches column 1, which the initial
+// 2-column-wide window already shows in full — same header text, same (0)
+// counts, only the (ANSI-stripped-away) focus styling differs, so the frame
+// compares equal despite the cursor having actually moved (verified: that
+// one-call version stayed green under the mutant). Five of each is enough to
+// push a raw-incrementing MoveRight to column 4 — clamp's own upper bound —
+// which a skip-aware MoveLeft then cannot pull back from (nothing left of it
+// is populated either), scrolling the window and changing the frame for
+// real.
+func (s *boardTestSuite) TestAnAllEmptyBoardDoesNotMoveOrPanic() {
+	m := s.model(nil, 58, 20)
+	before := ansi.Strip(m.View())
+
+	s.NotPanics(func() {
+		for range 5 {
+			m.MoveRight()
+		}
+		for range 5 {
+			m.MoveLeft()
+		}
+	})
+
+	s.Empty(m.SelectedID())
+	s.Equal(before, ansi.Strip(m.View()), "with nothing populated anywhere, the cursor must not move at all")
+}
+
+func (s *boardTestSuite) TestEmptyColumnsStillRender() {
+	out := ansi.Strip(s.model(s.gapped(), 200, 20).View())
+
+	// Skipping is a navigation rule, not a visibility one: a status with
+	// nothing in it is worth seeing on a board used for triage.
+	s.Contains(out, "(0)")
 }
 
 func (s *boardTestSuite) TestSCyclesTheSwimlane() {
@@ -378,11 +509,14 @@ func (s *boardTestSuite) TestSelectedCardIsStyledDistinctly() {
 // board_120x20 golden shows all 5 status columns at once and never has a
 // board-level "+N more"/scroll marker of any kind, so nothing pinned that
 // path at all. 58 columns-wide fits exactly 2 of the 5 status columns (see
-// boardview.go's visibleLayout); jumping to Blocked (index 2) pushes the
-// window to [1,2], leaving one column hidden on each side.
+// boardview.go's visibleLayout). jumpToColumn(2) used to land on Blocked
+// (index 2, empty in this fixture); now that MoveRight skips empty columns
+// it lands on Closed (index 3) instead, which still pushes the window to
+// [2,3] — two columns hidden on the left, one on the right — so this still
+// forces both markers, just off a different column than before.
 func (s *boardTestSuite) TestGoldenRenderingWithScrollMarkers() {
 	m := s.model(s.sample(), 58, 20)
-	jumpToColumn(m, 2) // Blocked: forces both a left and a right hidden-column marker
+	jumpToColumn(m, 2) // Closed: forces both a left and a right hidden-column marker
 
 	actual := ansi.Strip(m.View())
 	s.Equal(golden(s.T(), "board_58x20_scrolled.golden", actual), actual)

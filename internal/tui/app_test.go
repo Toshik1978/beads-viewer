@@ -1423,17 +1423,26 @@ func (s *appTestSuite) TestEnterOnACardOpensItInTheList() {
 
 // TestEnterOnAnEmptyColumnDoesNothing pins that Enter is a silent no-op when
 // the board's cursor sits on a column with no issue under it.
+//
+// Walking there with 'l' is no longer possible (bv-llf.2.1: MoveLeft/
+// MoveRight skip empty columns), so this reaches the same state the way
+// clamp still allows: a regrouping that empties the column the cursor
+// already sits on. Hiding closed issues does exactly that — bv-2 is the only
+// issue in the Closed column, so filtering it out leaves the cursor on a
+// column with nothing under it, which is what clamp resolves to rather than
+// picking a new one — see boardview's clamp.
 func (s *appTestSuite) TestEnterOnAnEmptyColumnDoesNothing() {
-	// A board column with no issues keeps the column selected with no issue
-	// under the cursor — see boardview's clamp. Enter there must be inert.
-	m := s.newModel([]beads.Issue{{ID: "bv-1", Title: "only", Status: beads.StatusOpen}})
+	m := s.newModel([]beads.Issue{
+		{ID: "bv-1", Title: "open", Status: beads.StatusOpen},
+		{ID: "bv-2", Title: "closed", Status: beads.StatusClosed},
+	})
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 
-	// Walk right past the populated column into an empty one.
-	for range 5 {
-		m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	}
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"}) // skips the empty columns between Open and Closed
+	s.Require().Equal("bv-2", m.SelectedID(), "fixture assumption: cursor lands directly on Closed")
+
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"}) // hide closed: regroups with bv-2 filtered out
 	s.Require().Empty(m.SelectedID(), "fixture assumption: cursor is on an empty column")
 
 	before := m.View()

@@ -219,20 +219,20 @@ func (m *Model) MoveDown() {
 	m.syncSelected()
 }
 
-// MoveLeft moves the cursor to the previous column, stopping at the first
-// one. Moving into a column with fewer rows clamps the row to its last
-// index; moving into an empty column keeps the column selection with no
-// selected issue — see clamp.
+// MoveLeft moves the cursor to the nearest column to the left that holds at
+// least one issue, and stays where it is when there is none. Empty columns
+// are skipped rather than hidden: they still render with their header, count
+// and stats, so nothing about the board is concealed — the cursor simply does
+// not park where there is nothing to act on.
 func (m *Model) MoveLeft() {
-	m.col--
+	m.col = m.nextPopulated(m.col, -1)
 	m.clamp()
 	m.syncSelected()
 }
 
-// MoveRight moves the cursor to the next column, stopping at the last one.
-// See MoveLeft for what happens when the destination is shorter or empty.
+// MoveRight is MoveLeft's mirror; see it for why empty columns are skipped.
 func (m *Model) MoveRight() {
-	m.col++
+	m.col = m.nextPopulated(m.col, 1)
 	m.clamp()
 	m.syncSelected()
 }
@@ -298,12 +298,33 @@ func (m *Model) followCursor(visible int) {
 	m.firstCol = min(max(first, 0), max(len(m.columns)-visible, 0))
 }
 
+// nextPopulated returns the index of the nearest column in direction step
+// that holds at least one issue, or from when there is none — including when
+// every column is empty, which is why the caller can treat the result as
+// always valid.
+//
+// This is a movement rule only. clamp stays responsible for confining the
+// cursor to a cell that exists, because a regrouping or a reload can empty
+// the column the cursor is already on, and that case must still resolve to
+// somewhere valid rather than to wherever movement last left it.
+func (m *Model) nextPopulated(from, step int) int {
+	for i := from + step; i >= 0 && i < len(m.columns); i += step {
+		if len(m.columns[i].Issues) > 0 {
+			return i
+		}
+	}
+
+	return from
+}
+
 // clamp confines the cursor to a cell that exists.
 //
 // Called at the end of every movement and after every regrouping. An empty
 // column keeps the column selection with row 0 and no selected issue, rather
-// than being skipped — an unreachable column hides the fact that it is
-// empty.
+// than being skipped — a regrouping or a reload can strand the cursor on a
+// column that just lost its only issue, and clamp has to resolve that safely
+// even though MoveLeft and MoveRight no longer land there on purpose (see
+// nextPopulated).
 func (m *Model) clamp() {
 	if len(m.columns) == 0 {
 		m.col, m.row = 0, 0
