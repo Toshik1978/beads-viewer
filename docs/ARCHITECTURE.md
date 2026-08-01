@@ -110,9 +110,13 @@ entirely.
 `beads.Snapshot.IsBlocked` and `IsReady` (`internal/beads/derive.go`) are
 deliberately written to mirror `br`'s own blocker and readiness queries in its
 SQLite storage layer line for line where it matters — including two details
-that are easy to get backwards: a parent-child edge never blocks, and a
-dependency on an id absent from the snapshot *does* block, because an
-unresolvable blocker is not the same thing as a satisfied one. Any future
+that are easy to get backwards: a parent-child edge never blocks *by itself*,
+and a dependency on an id absent from the snapshot *does* block, because an
+unresolvable blocker is not the same thing as a satisfied one. The first of
+those has a second half worth stating alongside it: an unfinished parent is
+not a blocker — that is the ordinary state of every subtask — but a parent
+held up by a dependency of its own is waiting on something the child cannot
+finish, so that wait is inherited all the way down the chain. Any future
 change to how `bv` computes ready or blocked should be checked against that
 storage layer's own logic first, not re-derived from first principles — `br`
 is the system of record, and `bv` exists to read what `br` already decided.

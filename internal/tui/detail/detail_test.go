@@ -251,24 +251,133 @@ func (s *detailTestSuite) TestRendersChildren() {
 	s.Contains(out, "the child")
 }
 
-func (s *detailTestSuite) TestExplainsADanglingBlocker() {
-	// IsBlocked is true but Blockers is empty. Rendering nothing here reads as
-	// a bug — the issue is plainly blocked and the pane says nothing.
-	issues := []beads.Issue{
+// blockReasonFixture is the workspace the three empty-Blockers cases are read
+// out of. All three make IsBlocked true while Snapshot.Blockers names nobody,
+// which is why one note used to stand in for all of them:
+//
+//   - bv-dangle depends on an id no record answers to;
+//   - bv-epic is an epic whose child bv-epic-kid is still open;
+//   - bv-leaf inherits from bv-mid, which waits on the live bv-gate.
+func blockReasonFixture() *beads.Snapshot {
+	child := func(id, parent string) beads.Dependency {
+		return beads.Dependency{IssueID: id, DependsOnID: parent, Type: beads.DepParentChild}
+	}
+	blocks := func(id, target string) beads.Dependency {
+		return beads.Dependency{IssueID: id, DependsOnID: target, Type: beads.DepBlocks}
+	}
+
+	return beads.NewSnapshot([]beads.Issue{
 		{
-			ID: "bv-1", Title: "blocked", Status: beads.StatusOpen,
-			Dependencies: []beads.Dependency{
-				{IssueID: "bv-1", DependsOnID: "gone", Type: beads.DepBlocks},
-			},
+			ID: "bv-dangle", Title: "dangling", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{blocks("bv-dangle", "gone")},
+		},
+		{ID: "bv-epic", Title: "the epic", Status: beads.StatusOpen, IssueType: beads.TypeEpic},
+		{
+			ID: "bv-epic-kid", Title: "epic child", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{child("bv-epic-kid", "bv-epic")},
+		},
+		{ID: "bv-gate", Title: "the gate", Status: beads.StatusOpen},
+		{
+			ID: "bv-mid", Title: "waits on the gate", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{blocks("bv-mid", "bv-gate")},
+		},
+		{
+			ID: "bv-leaf", Title: "inherits", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{child("bv-leaf", "bv-mid")},
+		},
+	})
+}
+
+// TestNamesEachReasonForAnEmptyBlockersList pins the fix for the note that
+// claimed every unnameable blocker was a missing issue. Each case asserts both
+// the reason that applies and the absence of the two that do not: what was
+// wrong was never a missing string, it was the wrong one being confidently
+// rendered in its place.
+func (s *detailTestSuite) TestNamesEachReasonForAnEmptyBlockersList() {
+	snap := blockReasonFixture()
+	cases := []struct {
+		id      string
+		want    []string
+		notWant []string
+		why     string
+	}{
+		{
+			id:      "bv-dangle",
+			want:    []string{"gone", "not present in this workspace"},
+			notWant: []string{"parent chain", "open child"},
+			why:     "a blocking id no record answers to",
+		},
+		{
+			id:      "bv-epic",
+			want:    []string{"open child holds this epic"},
+			notWant: []string{"not present in this workspace", "parent chain"},
+			why:     "an epic held by its own open child",
+		},
+		{
+			id:      "bv-leaf",
+			want:    []string{"bv-mid", "waits on the gate", "parent chain"},
+			notWant: []string{"not present in this workspace", "open child"},
+			why:     "inherited from a blocked ancestor, which is named",
 		},
 	}
-	snap := beads.NewSnapshot(issues)
-	target := findIssue(snap, "bv-1")
+	for _, tc := range cases {
+		s.Run(tc.id+": "+tc.why, func() {
+			m := s.newModel(70, 40)
+			m.SetIssue(findIssue(snap, tc.id), snap)
+
+			out := ansi.Strip(m.View())
+			s.Contains(out, "Blocked by")
+			for _, want := range tc.want {
+				s.Contains(out, want)
+			}
+			for _, notWant := range tc.notWant {
+				s.NotContains(out, notWant)
+			}
+		})
+	}
+}
+
+// TestBlockedBySectionStaysAbsentWhenNothingBlocks guards the other half: the
+// section is built from four independent questions now, and none of them may
+// produce a heading over nothing.
+func (s *detailTestSuite) TestBlockedBySectionStaysAbsentWhenNothingBlocks() {
+	snap := blockReasonFixture()
 
 	m := s.newModel(70, 40)
-	m.SetIssue(target, snap)
+	m.SetIssue(findIssue(snap, "bv-gate"), snap)
 
-	s.Contains(m.View(), "not present in this workspace")
+	s.NotContains(ansi.Strip(m.View()), "Blocked by")
+}
+
+// TestListsALiveBlockerAndAnInheritedOneTogether pins that the reasons are
+// additive rather than a first-match. bv-mid's own edge on bv-gate is live and
+// nameable, and bv-mid is also a blocked ancestor of bv-tail — br's own
+// blocked_by lists both for such an issue, and the pane now does too.
+func (s *detailTestSuite) TestListsALiveBlockerAndAnInheritedOneTogether() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "bv-gate", Title: "the gate", Status: beads.StatusOpen},
+		{
+			ID: "bv-mid", Title: "waits on the gate", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "bv-mid", DependsOnID: "bv-gate", Type: beads.DepBlocks},
+			},
+		},
+		{
+			ID: "bv-tail", Title: "tail", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "bv-tail", DependsOnID: "bv-mid", Type: beads.DepParentChild},
+				{IssueID: "bv-tail", DependsOnID: "bv-gate", Type: beads.DepBlocks},
+			},
+		},
+	})
+
+	m := s.newModel(70, 40)
+	m.SetIssue(findIssue(snap, "bv-tail"), snap)
+
+	out := ansi.Strip(m.View())
+	s.Contains(out, "the gate")
+	s.Contains(out, "waits on the gate")
+	s.Contains(out, "parent chain")
 }
 
 func (s *detailTestSuite) TestNilIssueRendersAPlaceholder() {

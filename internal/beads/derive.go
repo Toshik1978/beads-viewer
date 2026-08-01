@@ -24,29 +24,50 @@ type Counts struct {
 	Closed  int
 }
 
-// IsBlocked reports whether an open dependency prevents work on the issue.
+// IsBlocked reports whether anything prevents work on the issue.
 //
-// The rule mirrors br's blocker query (src/storage/sqlite.rs:7175) exactly,
-// including two details that are easy to get wrong: parent-child edges do not
-// block, and a dependency on an id that is absent from the snapshot does
-// block — br's LEFT JOIN keeps those rows via `OR i.id IS NULL`, on the
-// principle that an unresolvable blocker is not a satisfied one. A third
-// rule, blockedByOpenChild below, adds a close-ordering check specific to
-// epics: an open, non-template child counts as blocking one too.
+// Three rules, each mirroring one br uses. The first is the direct blocker
+// query (src/storage/sqlite.rs:7175), which contains a detail that is easy to
+// get wrong: a dependency on an id absent from the snapshot does block — br's
+// LEFT JOIN keeps those rows via `OR i.id IS NULL`, on the principle that an
+// unresolvable blocker is not a satisfied one. The second, blockedByOpenChild,
+// is a close-ordering check specific to epics: an open, non-template child
+// counts as blocking one too.
+//
+// The third, BlockedAncestor, is why the parent-child edge is at once
+// excluded and not. The edge itself never blocks — DepType.Blocks() filters it
+// out, so "my parent is unfinished" is not a blocker, and it must not be: that
+// is the ordinary condition of every subtask, and the child is usually the
+// work that finishes the parent. What does block is inherited: a parent held
+// up by a dependency of its own is waiting on something outside the subtree,
+// which no progress on the child can resolve, so the wait reaches down to the
+// child too, and on down the chain. Only the dependency rule is inherited —
+// propagating blockedByOpenChild would mark every child of an open epic as
+// blocked by itself, which is the reading DepType.Blocks() already rejects,
+// and which br rejects too by stripping that marker before it reaches a child.
 func (s *Snapshot) IsBlocked(id string) bool {
 	issue, ok := s.byID[id]
 	if !ok {
 		return false
 	}
 
-	return slices.ContainsFunc(issue.Dependencies, s.blocks) || s.blockedByOpenChild(issue)
+	if s.blockedByDependency(issue) || s.blockedByOpenChild(issue) {
+		return true
+	}
+	_, inherited := s.blockedAncestor(issue)
+
+	return inherited
 }
 
 // Blockers returns the live blocking issues present in this snapshot.
 //
-// A dangling blocker makes IsBlocked true but cannot appear here, since there
-// is no issue to return. Callers rendering "blocked by …" should fall back to
-// IsBlocked rather than assuming a non-empty result.
+// It answers "which dependency row is stopping this issue", so it names only
+// what the issue's own edges point at. Two of IsBlocked's three rules
+// therefore cannot appear here at all, and a third can be true with nothing
+// to return, so a caller rendering "blocked by …" must not read an empty
+// result as "not blocked". BlockedAncestor, BlockedByOpenChild and
+// DanglingBlockers below exist so such a caller can say which of the three
+// applies without re-deriving any of them for itself.
 func (s *Snapshot) Blockers(id string) []*Issue {
 	issue, ok := s.byID[id]
 	if !ok {
@@ -88,6 +109,67 @@ func (s *Snapshot) IsReady(id string) bool {
 	default:
 		return !s.IsBlocked(id)
 	}
+}
+
+// BlockedAncestor returns the nearest ancestor whose own dependency is what
+// blocks this issue, and whether there is one.
+//
+// This is the inherited rule of IsBlocked, exported so a caller can name the
+// cause. It reports the ancestor that actually holds the unsatisfied edge
+// rather than the nearest blocked one, because that is the issue a reader has
+// to go and look at: an intermediate parent that is itself only blocked by
+// inheritance explains nothing the child does not already know.
+func (s *Snapshot) BlockedAncestor(id string) (*Issue, bool) {
+	issue, ok := s.byID[id]
+	if !ok {
+		return nil, false
+	}
+
+	return s.blockedAncestor(issue)
+}
+
+// BlockedByOpenChild reports whether the epic close-ordering rule is what
+// blocks this issue. See blockedByOpenChild for what that rule is and why it
+// is neither a dependency edge nor inherited downward.
+func (s *Snapshot) BlockedByOpenChild(id string) bool {
+	issue, ok := s.byID[id]
+	if !ok {
+		return false
+	}
+
+	return s.blockedByOpenChild(issue)
+}
+
+// DanglingBlockers returns the ids this issue declares a blocking edge on
+// that no issue in this snapshot answers to.
+//
+// Each one makes IsBlocked true (see there) while contributing nothing to
+// Blockers, since there is no issue to return. Returning the raw ids is the
+// point: an id is all there is to say about a blocker that is not here, and
+// it is what a reader needs in order to go and find out where it went.
+//
+// The filter is s.blocks itself rather than a restatement of its guards. That
+// composes exactly, because s.blocks answers true on the absent-target branch
+// before it looks at the target's template flag or status — so within an edge
+// s.blocks accepts, "the target is not in byID" is the whole of what makes it
+// dangling. Restating the guards instead would work today and quietly stop
+// working the moment a fourth exclusion joins s.blocks: this list would keep
+// reporting the edges that rule now excludes, and nothing would fail.
+func (s *Snapshot) DanglingBlockers(id string) []string {
+	issue, ok := s.byID[id]
+	if !ok {
+		return nil
+	}
+
+	var missing []string
+	for _, dep := range issue.Dependencies {
+		if _, exists := s.byID[dep.DependsOnID]; exists || !s.blocks(dep) {
+			continue
+		}
+		missing = append(missing, dep.DependsOnID)
+	}
+
+	return missing
 }
 
 // Counts tallies the snapshot for the status bar.
@@ -136,6 +218,40 @@ func (s *Snapshot) blockedByOpenChild(issue *Issue) bool {
 	return slices.ContainsFunc(s.children[issue.ID], func(child *Issue) bool {
 		return !child.Status.IsTerminal() && !child.IsTemplate
 	})
+}
+
+// blockedByDependency reports whether the issue holds an unsatisfied blocking
+// edge of its own. This is the only rule that is inherited downward, so it is
+// named separately from IsBlocked rather than inlined there.
+func (s *Snapshot) blockedByDependency(issue *Issue) bool {
+	return slices.ContainsFunc(issue.Dependencies, s.blocks)
+}
+
+// blockedAncestor finds the nearest ancestor whose own unsatisfied dependency
+// reaches down to this issue. See IsBlocked for why it is the dependency rule
+// alone that travels, and why it travels the whole chain rather than one hop.
+//
+// The walk carries a visited set because .beads/issues.jsonl is hand-editable
+// and bv renders rather than validates: a parent chain that closes into a
+// cycle is malformed data the viewer must still open, and an unguarded walk
+// would hang the UI instead of failing a decode. An issue reachable from
+// itself is treated as unblocked by this rule — its own edges are already
+// covered by blockedByDependency, so the cycle contributes nothing new.
+func (s *Snapshot) blockedAncestor(issue *Issue) (*Issue, bool) {
+	var visited []string
+
+	current := issue
+	for {
+		parent, ok := s.Parent(current.ID)
+		if !ok || parent.ID == issue.ID || slices.Contains(visited, parent.ID) {
+			return nil, false
+		}
+		if s.blockedByDependency(parent) {
+			return parent, true
+		}
+		visited = append(visited, parent.ID)
+		current = parent
+	}
 }
 
 // blocks reports whether one dependency edge currently blocks its holder.

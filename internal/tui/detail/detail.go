@@ -48,11 +48,28 @@ const (
 	// narrowPanePlaceholder is shown below minPaneWidth.
 	narrowPanePlaceholder = "pane too narrow"
 
-	// danglingBlockerNote explains the case where IsBlocked is true but
-	// Blockers is empty: the blocking id is not present in this workspace, so
-	// there is no issue to name. Rendering nothing here would read as a bug —
-	// the issue is plainly blocked and the pane would say nothing about why.
-	danglingBlockerNote = "blocked by an issue not present in this workspace"
+	// The three notes below cover the reasons an issue can be blocked with no
+	// blocker Snapshot.Blockers can name, since Blockers reports only what this
+	// issue's own dependency rows point at. Rendering nothing in those cases
+	// would read as a bug — the issue is plainly blocked and the pane would say
+	// nothing about why — but so does naming the wrong one, which is what a
+	// single note did: it called every unnamed cause a missing issue, including
+	// an inherited block whose cause was sitting in the workspace all along.
+	//
+	// danglingBlockerNote is the original case: the blocking id is not in this
+	// workspace, so there is no issue to name.
+	danglingBlockerNote = "not present in this workspace"
+
+	// inheritedBlockerNote marks the ancestor that holds the unsatisfied edge.
+	// It is named rather than merely alluded to, because the whole difference
+	// between this and a dangling blocker is that this one can be gone and
+	// looked at.
+	inheritedBlockerNote = "blocked, further up this issue's parent chain"
+
+	// openChildBlockerNote covers br's epic close-ordering rule, where the
+	// blocking work is the epic's own children — already listed under
+	// "Children", so this states the relationship rather than repeating them.
+	openChildBlockerNote = "an open child holds this epic until it closes"
 )
 
 // markdownRenderer is the fallback seam behind *glamour.TermRenderer. A test

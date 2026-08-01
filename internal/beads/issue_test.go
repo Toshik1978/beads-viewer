@@ -15,6 +15,7 @@ func TestBeads(t *testing.T) {
 	suite.Run(t, new(workspaceTestSuite))
 	suite.Run(t, new(snapshotTestSuite))
 	suite.Run(t, new(deriveTestSuite))
+	suite.Run(t, new(inheritTestSuite))
 	suite.Run(t, new(filterTestSuite))
 }
 

@@ -205,9 +205,12 @@ func (s *deriveTestSuite) TestMatchesBrBlocked() {
 
 	var got []string
 	for _, issue := range snap.Issues() {
-		// br blocked lists open work that is blocked, not every issue with an
+		// br blocked lists live work that is blocked, not every issue with an
 		// unsatisfied edge — a closed issue's stale blocker is not interesting.
-		if issue.Status == beads.StatusOpen && snap.IsBlocked(issue.ID) {
+		// "Live" is every non-terminal status, not StatusOpen alone: br reports
+		// an in_progress issue whose blocker is unsatisfied, and filtering on
+		// StatusOpen here silently dropped it from the comparison.
+		if !issue.Status.IsTerminal() && snap.IsBlocked(issue.ID) {
 			got = append(got, issue.ID)
 		}
 	}

@@ -156,31 +156,60 @@ func (m *Model) renderComments() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderBlockedBy names each live blocker and its status. When IsBlocked is
-// true but Blockers is empty, the blocking id is absent from this workspace
-// — a dangling reference — and that is stated explicitly, since rendering
-// nothing here would read as a bug: the issue is plainly blocked and the
-// pane would say nothing about why.
+// renderBlockedBy states every reason this issue is blocked, not only the ones
+// Snapshot.Blockers can name.
+//
+// The section used to be "the live blockers, or else a dangling reference",
+// which read the empty Blockers list as proof of a missing issue. It is not:
+// Blockers reports this issue's own dependency rows, so it is also empty for
+// an issue blocked through its parent chain and for an epic held by its own
+// open children — both of which would then be reported as pointing at an issue
+// "not present in this workspace" while the real cause sat two rows further
+// down the same pane. Each cause is asked for separately and stated on its own
+// line, so no cause has to stand in for another and several can be true at
+// once. When none is, the section is omitted entirely.
 func (m *Model) renderBlockedBy() string {
-	blockers := m.snapshot.Blockers(m.issue.ID)
-
-	switch {
-	case len(blockers) > 0:
-		lines := make([]string, 0, len(blockers)+1)
-		lines = append(lines, m.theme.Title.Render("Blocked by")+":")
-		for _, blocker := range blockers {
-			line := fmt.Sprintf(
-				"  %s %s (%s)", uitext.Sanitize(blocker.ID), uitext.Sanitize(blocker.Title), blocker.Status.Display(),
-			)
-			lines = append(lines, wrapLine(line, m.width))
-		}
-
-		return strings.Join(lines, "\n")
-	case m.snapshot.IsBlocked(m.issue.ID):
-		return wrapLine(m.theme.Title.Render("Blocked by")+": "+danglingBlockerNote, m.width)
-	default:
+	entries := m.blockedByEntries()
+	if len(entries) == 0 {
 		return ""
 	}
+
+	lines := make([]string, 0, len(entries)+1)
+	lines = append(lines, m.theme.Title.Render("Blocked by")+":")
+	for _, entry := range entries {
+		lines = append(lines, wrapLine("  "+entry, m.width))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// blockedByEntries collects one line per reason, live blockers first: those
+// are the edges the issue itself declares, and the rest qualify them.
+func (m *Model) blockedByEntries() []string {
+	var entries []string
+
+	for _, blocker := range m.snapshot.Blockers(m.issue.ID) {
+		entries = append(entries, describeIssue(blocker))
+	}
+	if ancestor, ok := m.snapshot.BlockedAncestor(m.issue.ID); ok {
+		entries = append(entries, describeIssue(ancestor)+" — "+inheritedBlockerNote)
+	}
+	for _, missing := range m.snapshot.DanglingBlockers(m.issue.ID) {
+		entries = append(entries, uitext.Sanitize(missing)+" — "+danglingBlockerNote)
+	}
+	if m.snapshot.BlockedByOpenChild(m.issue.ID) {
+		entries = append(entries, openChildBlockerNote)
+	}
+
+	return entries
+}
+
+// describeIssue renders the "id title (Status)" form every named blocker and
+// ancestor shares, so the two read as the same kind of reference.
+func describeIssue(issue *beads.Issue) string {
+	return fmt.Sprintf(
+		"%s %s (%s)", uitext.Sanitize(issue.ID), uitext.Sanitize(issue.Title), issue.Status.Display(),
+	)
 }
 
 // renderBlocks names every issue this one blocks. Snapshot has no direct
