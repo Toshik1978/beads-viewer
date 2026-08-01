@@ -246,10 +246,13 @@ See [`docs/RELEASING.md`](./docs/RELEASING.md) for the full sequence. In
 short: `task changelog` generates the commit list, the release prose is
 hand-written above it, `task release:verify` checks the tag against the
 changelog before it is created, and the tag-triggered workflow builds and
-publishes the archives. Do not run `git push` or `gh` in this repository — it
-has no remote, and `docs/RELEASING.md` Step 1 is explicit that the first tag
-is created only after this repository's history is re-initialised for
-publication, not against the current working history.
+publishes the archives. Do not run `git push` or `gh` in this repository. An
+`origin` remote does exist — this sentence previously said it did not, which
+went stale — but `docs/RELEASING.md` Step 1 is explicit that the first tag is
+created only after this repository's history is re-initialised for
+publication, not against the current working history. Pushing the working
+history would pre-empt that re-initialisation, so the prohibition stands on
+its own terms and is not merely a consequence of there being nowhere to push.
 
 ## Architecture
 
