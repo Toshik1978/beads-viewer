@@ -101,7 +101,7 @@ These are grouped exactly as they appear in `bv`'s own in-app help overlay
 | Key | Action |
 |---|---|
 | `/` | edit the free-text filter |
-| `c` | toggle hide-closed (tree view) |
+| `c` | toggle hide-closed |
 
 **Navigation**
 
@@ -151,7 +151,7 @@ display).
 ## State
 
 `bv` writes nothing inside `.beads/` — but it is not stateless everywhere.
-The tree view persists its expansion, selection and hide-closed setting to
+The tree view persists its expansion and selection to
 `$XDG_STATE_HOME/bv/trees/` (falling back to `~/.local/state/bv/trees/` when
 that variable is unset), keyed to the workspace, on exit — so the tree
 reopens the way you left it. If the tree view opens already expanded and you
@@ -189,10 +189,11 @@ Two things the numbers do not mean, worth being explicit about:
   its ready group.
 - **Hide-closed narrows what you see, not what gets counted**, and unlike
   typing a search, it needs no keypress to be active: `hide_closed: true` in
-  `config.yaml` turns it on for the whole session, and the tree view's own
-  toggle (`c`) persists across restarts via the state file described above —
-  so a session can start in that mode silently. The status bar's counts stay
-  computed from every issue in the workspace either way.
+  `config.yaml` turns it on for the whole session, so a session can start in
+  that mode silently. It is one filter shared by all three views — `c`
+  toggles it everywhere at once, and it is not persisted between runs. The
+  status bar's counts stay computed from every issue in the workspace either
+  way, alongside an `(N hidden)` indicator while it is on.
 
 ## Known divergences from `br`
 

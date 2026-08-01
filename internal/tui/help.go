@@ -88,10 +88,7 @@ func helpGroups(keys KeyMap) []helpGroup {
 	return []helpGroup{
 		{"Global", []key.Binding{keys.Quit, keys.Help, keys.Yank, keys.Focus}},
 		{"Views", []key.Binding{keys.ViewList, keys.ViewTree, keys.ViewBoard, keys.Open}},
-		{"Filtering", []key.Binding{
-			keys.Filter,
-			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "hide closed (tree)")),
-		}},
+		{"Filtering", []key.Binding{keys.Filter, keys.HideClosed}},
 		{"Navigation", []key.Binding{
 			keys.Up, keys.Down,
 			key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("left/h", "collapse / move left")),

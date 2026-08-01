@@ -100,3 +100,11 @@ func ExportPaneHeights(l Layout) (list, detail int) { return l.paneHeights() }
 // ViewKindForTest reports which view is active, so a test can assert that a
 // key actually switched panes rather than only that selection moved.
 func ViewKindForTest(m *Model) config.ViewKind { return viewKindAt(m.active) }
+
+// ActivePaneForTest renders the active view's own pane, without the detail
+// pane beside it. A whole-frame assertion cannot say "the filter removed this
+// issue": syncDetail hands the detail pane the *unfiltered* snapshot on
+// purpose (see its comment), so a filtered-out parent still resolves to a
+// name and status there rather than reading as a dangling reference. This is
+// what lets a filter test assert on the rows a filter actually governs.
+func ActivePaneForTest(m *Model) string { return m.views[m.active].View() }

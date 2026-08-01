@@ -758,28 +758,103 @@ func (s *appTestSuite) TestBoardLaneOnlyShowsOnTheBoard() {
 	s.NotContains(m.View(), "Priority", "and disappear once another view is active")
 }
 
-// TestTreeHiddenCountOnlyShowsOnTheTree is I2's fix pinned, the tree's own
-// counterpart to TestBoardLaneOnlyShowsOnTheBoard above. Before this task,
-// pressing 'c' collapsed the tree from however many rows down to whatever
-// stayed open while the status bar kept reading exactly as it had a moment
-// before — treeview.Model.HiddenCount was written for this and had zero
-// callers.
-func (s *appTestSuite) TestTreeHiddenCountOnlyShowsOnTheTree() {
+// TestHiddenCountShowsOnEveryView replaces TestTreeHiddenCountOnlyShowsOn-
+// TheTree, which pinned the opposite: the count used to come from the tree's
+// own local toggle, so it read 0 on the list and the board no matter what was
+// hidden. Hide-closed is one filter shared by all three views now, so the
+// indicator has to follow it everywhere — a count that vanished on a view
+// switch would now be reporting the wrong thing, not scoping itself.
+//
+// The two tombstones in the fixture are what keep the count honest. They are
+// terminal, so beads.Counts folds them into Closed, but they are hidden with
+// the toggle off as well — a status bar reading Counts.Closed straight off
+// says "3 hidden" here when pressing 'c' hid exactly one issue.
+func (s *appTestSuite) TestHiddenCountShowsOnEveryView() {
 	issues := []beads.Issue{
 		{ID: "bv-1", Title: "open one", Status: beads.StatusOpen},
 		{ID: "bv-2", Title: "closed one", Status: beads.StatusClosed},
+		{ID: "bv-3", Title: "deleted one", Status: beads.StatusTombstone},
+		{ID: "bv-4", Title: "deleted two", Status: beads.StatusTombstone},
 	}
 	m := s.newModel(issues)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	m.Update(tea.KeyPressMsg{Code: '2'}) // switch to tree
 	s.NotContains(m.View(), "hidden", "nothing is hidden until 'c' is pressed")
 
-	m.Update(tea.KeyPressMsg{Code: 'c'})
-	s.Contains(m.View(), "1 hidden", "the tree's own hide-closed toggle must be visible on the status bar")
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 
-	m.Update(tea.KeyPressMsg{Code: '1'}) // switch to list
-	s.NotContains(m.View(), "hidden", "the indicator is tree-specific and must disappear on another view")
+	for _, viewKey := range []rune{'1', '2', '3'} {
+		s.Run(string(viewKey), func() {
+			m.Update(tea.KeyPressMsg{Code: viewKey, Text: string(viewKey)})
+			s.Contains(ansi.Strip(m.View()), "1 hidden",
+				"the shared filter's hidden count must show on every view")
+		})
+	}
+}
+
+// closedParentIssues is the case the promotion changes: a closed epic with
+// an open child. Under the tree's old local prune the epic stayed as
+// scaffolding; under a global filter it is gone and the child re-roots.
+func closedParentIssues() []beads.Issue {
+	return []beads.Issue{
+		{ID: "bv-1", Title: "closed epic", IssueType: beads.TypeEpic, Status: beads.StatusClosed},
+		{
+			ID: "bv-2", Title: "open child", IssueType: beads.TypeTask, Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{{DependsOnID: "bv-1", Type: beads.DepParentChild}},
+		},
+	}
+}
+
+// TestHideClosedNarrowsEveryView asserts on the active pane rather than the
+// whole frame (ActivePaneForTest, export_test.go): the detail pane beside it
+// is handed the unfiltered snapshot on purpose, so it still names bv-1 as
+// bv-2's parent once the filter has removed it — deliberate, and not what
+// this test is about.
+func (s *appTestSuite) TestHideClosedNarrowsEveryView() {
+	m := s.newModel(closedParentIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	for _, viewKey := range []rune{'1', '2', '3'} {
+		s.Run(string(viewKey), func() {
+			m.Update(tea.KeyPressMsg{Code: viewKey, Text: string(viewKey)})
+			s.Contains(ansi.Strip(tui.ActivePaneForTest(m)), "bv-1")
+		})
+	}
+
+	m.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+
+	for _, viewKey := range []rune{'1', '2', '3'} {
+		s.Run("hidden/"+string(viewKey), func() {
+			m.Update(tea.KeyPressMsg{Code: viewKey, Text: string(viewKey)})
+			out := ansi.Strip(tui.ActivePaneForTest(m))
+			s.NotContains(out, "bv-1", "the closed epic must be gone from every view")
+			s.Contains(out, "bv-2", "its open child must survive, re-rooted")
+		})
+	}
+}
+
+func (s *appTestSuite) TestHideClosedTogglesBackOn() {
+	m := s.newModel(closedParentIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+
+	// The pane, not the frame, for the reason the sibling test above gives:
+	// the detail pane names bv-1 either way, so a frame-level assertion here
+	// would pass with the second press deleted.
+	s.Contains(ansi.Strip(tui.ActivePaneForTest(m)), "bv-1")
+}
+
+func (s *appTestSuite) TestHideClosedShowsOnTheStatusBar() {
+	m := s.newModel(closedParentIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+
+	// Filter.Describe already renders this — it has since before the
+	// promotion, and its comment says the wording matches the key's label.
+	s.Contains(ansi.Strip(m.View()), "hide closed")
 }
 
 // TestGutterSeparatesTruncatedTitleFromDetailPane is I6's guard: the gutter

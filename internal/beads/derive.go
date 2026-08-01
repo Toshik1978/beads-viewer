@@ -22,6 +22,9 @@ type Counts struct {
 	Ready   int
 	Blocked int
 	Closed  int
+	// Tombstones is the deletion markers inside Closed. They are hidden with
+	// hide-closed off too, so a caller reporting what it hides subtracts them.
+	Tombstones int
 }
 
 // IsBlocked reports whether anything prevents work on the issue.
@@ -180,6 +183,9 @@ func (s *Snapshot) Counts() Counts {
 		switch {
 		case issue.Status.IsTerminal():
 			counts.Closed++
+			if issue.Status == StatusTombstone {
+				counts.Tombstones++
+			}
 		default:
 			counts.Open++
 			if s.IsBlocked(issue.ID) {

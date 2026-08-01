@@ -18,9 +18,8 @@ func (s *stateTestSuite) TestRoundTrip() {
 	s.T().Setenv("XDG_STATE_HOME", dir)
 
 	want := treeview.State{
-		Expanded:   []string{"epic", "epic.1"},
-		Selected:   "epic.1",
-		HideClosed: true,
+		Expanded: []string{"epic", "epic.1"},
+		Selected: "epic.1",
 	}
 	s.Require().NoError(want.Save("/some/project/.beads"))
 
@@ -29,7 +28,26 @@ func (s *stateTestSuite) TestRoundTrip() {
 	s.True(found, "a state that was just saved must be reported as found")
 	s.ElementsMatch(want.Expanded, got.Expanded)
 	s.Equal(want.Selected, got.Selected)
-	s.True(got.HideClosed)
+}
+
+func (s *stateTestSuite) TestAStateFileFromBeforeThePromotionStillLoads() {
+	dir := s.T().TempDir()
+	s.T().Setenv("XDG_STATE_HOME", dir)
+
+	// Written by a version that persisted hide_closed. An unknown field must
+	// be ignored, not refuse the whole file — losing a user's expansion state
+	// over a retired field would be worse than the field itself.
+	s.Require().NoError(treeview.State{Selected: "bv-1"}.Save("/p/.beads"))
+	path := treeview.StatePath("/p/.beads")
+	s.Require().NoError(os.WriteFile(path,
+		[]byte(`{"expanded":["bv-1"],"selected":"bv-1","hide_closed":true}`), 0o600))
+
+	state, found, err := treeview.LoadState("/p/.beads")
+
+	s.Require().NoError(err)
+	s.True(found)
+	s.Equal([]string{"bv-1"}, state.Expanded)
+	s.Equal("bv-1", state.Selected)
 }
 
 func (s *stateTestSuite) TestWorkspacesDoNotShareState() {

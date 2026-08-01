@@ -99,8 +99,7 @@ func (f Filter) Describe() string {
 		parts = append(parts, strings.Join(f.Labels, "+"))
 	}
 	if f.HideClosed {
-		// "hide closed", not "open only": matches the tree's own key-binding
-		// label (help.go) and README, both on screen together when help is open.
+		// "hide closed", not "open only": KeyMap.HideClosed's own label (keys.go).
 		parts = append(parts, "hide closed")
 	}
 	if f.ShowTombstones {

@@ -197,108 +197,25 @@ func (s *navTestSuite) TestSelectionFallbackClampsToTheNearestRowNotAlwaysZero()
 		"the fallback must clamp to the nearest surviving row, not always the first one")
 }
 
-func (s *navTestSuite) TestHideClosedCounts() {
+// TestATombstoneOnlyTreeRendersNothingAndDoesNotPanic replaces
+// TestHideClosedWithOnlyClosedIssuesRendersAMessageNotABlankPane. That test
+// pinned a placeholder this pane no longer owns: the app decides the empty
+// state for all three views (Model.body, internal/tui/empty.go), and the tree
+// only kept its own because hide-closed used to be a narrowing Model.body
+// could not see. What still matters is that Retain drops a tombstone-only
+// tree — deletion markers must never reach a row — and that rendering the
+// result is safe.
+func (s *navTestSuite) TestATombstoneOnlyTreeRendersNothingAndDoesNotPanic() {
 	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
 	m.SetSize(80, 20)
 	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
-		{ID: "root", Title: "root", Status: beads.StatusOpen},
-		child("open", "root"),
-		{
-			ID: "done", Title: "done", Status: beads.StatusClosed,
-			Dependencies: []beads.Dependency{
-				{IssueID: "done", DependsOnID: "root", Type: beads.DepParentChild},
-			},
-		},
-	}))
-	m.ExpandAll()
-
-	s.Zero(m.HiddenCount())
-	m.ToggleHideClosed()
-	s.Equal(1, m.HiddenCount())
-	s.NotContains(ansi.Strip(m.View()), "done")
-
-	// Toggling back must restore it. Without this, a ToggleHideClosed that
-	// pruned the tree destructively and never rebuilt from Build(snap) would
-	// pass every assertion above.
-	m.ToggleHideClosed()
-	s.Zero(m.HiddenCount())
-	s.Contains(ansi.Strip(m.View()), "done")
-
-	// HiddenCount must count nodes, not rows: a HiddenCount that used
-	// len(m.rows) instead of countNodes(m.roots) agrees with every assertion
-	// above, because ExpandAll made rows == nodes throughout. Collapsing
-	// everything shrinks the row count without changing how many issues
-	// hide-closed is actually hiding, so the count must not move.
-	m.ToggleHideClosed()
-	s.Equal(1, m.HiddenCount())
-	m.CollapseAll()
-	s.Equal(1, m.HiddenCount(), "collapsing must never change how many issues hide-closed hides")
-	m.ToggleHideClosed()
-}
-
-// TestHideClosedWithOnlyClosedIssuesRendersAMessageNotABlankPane is
-// Important 2's regression guard, reproduced from the live report: filtering
-// a workspace down to a single closed issue, then pressing 'c', used to
-// render an entirely blank tree pane — confirmed by rebuilding with the
-// message branch removed and replaying these exact steps. The status bar
-// still reports issues and a matching filter beside that blank pane, with
-// nothing telling the reader 'c' is the way back, which is what this test's
-// own message assertion (not merely NotEmpty) actually pins.
-func (s *navTestSuite) TestHideClosedWithOnlyClosedIssuesRendersAMessageNotABlankPane() {
-	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
-	m.SetSize(80, 20)
-	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
-		{ID: "closed", Title: "closed only", Status: beads.StatusClosed},
+		{ID: "gone", Title: "deleted issue", Status: beads.StatusTombstone},
 	}))
 
-	m.ToggleHideClosed()
-
-	out := ansi.Strip(m.View())
-	s.NotEmpty(strings.TrimSpace(out), "the pane must never render blank")
-	s.Contains(out, "Press c to show closed", "the message must hint that 'c' is the way back")
-}
-
-// TestHiddenCountIsZeroWhenHideClosedIsOff pins I4: Retain's zero filter
-// still drops a tombstone-only subtree on its own (see tree.go's Retain), so
-// snapshot.Len() minus countNodes(m.roots) is not zero even with hide-closed
-// off — it attributes that tombstone drop to hide-closed regardless. A
-// status bar built on this would render "N hidden" with the feature
-// disabled, which is what this fixture (a tombstone leaf, hide-closed off)
-// reproduces.
-func (s *navTestSuite) TestHiddenCountIsZeroWhenHideClosedIsOff() {
-	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
-	m.SetSize(80, 20)
-	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
-		{ID: "root", Title: "root", Status: beads.StatusOpen},
-		{
-			ID: "tomb-leaf", Title: "tomb-leaf", Status: beads.StatusTombstone,
-			Dependencies: []beads.Dependency{
-				{IssueID: "tomb-leaf", DependsOnID: "root", Type: beads.DepParentChild},
-			},
-		},
-	}))
-	m.ExpandAll()
-
-	s.Zero(m.HiddenCount(), "hide-closed is off; nothing it hides should be reported")
-}
-
-// TestHideClosedKeepsAClosedParentOfAnOpenChild pins the behaviour that
-// distinguishes Retain from the old Flatten(roots, hideClosed): a closed epic
-// with live work under it must stay, dimmed, rather than taking its child
-// down with it.
-func (s *navTestSuite) TestHideClosedKeepsAClosedParentOfAnOpenChild() {
-	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
-	m.SetSize(80, 20)
-	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
-		{ID: "epic", Title: "finished epic", Status: beads.StatusClosed},
-		child("live", "epic"),
-	}))
-	m.ExpandAll()
-	m.ToggleHideClosed()
-
-	out := ansi.Strip(m.View())
-	s.Contains(out, "live", "an open child must never be hidden")
-	s.Contains(out, "finished epic", "its closed parent is kept for reachability")
+	var out string
+	s.Require().NotPanics(func() { out = m.View() })
+	s.Empty(out, "a tombstone must never reach a row, and the app owns the empty state")
+	s.Nil(m.Selected())
 }
 
 func (s *navTestSuite) TestSelectionSurvivesAReload() {
@@ -409,38 +326,24 @@ func (s *navTestSuite) TestSelectionAndExpansionSurviveAWatcherReloadAtDepthTwo(
 	s.Equal("leaf", m.SelectedID(), "the depth-2 selection must survive an identical reload")
 }
 
-// TestToggleHideClosedTwiceRestoresExpansionExactly is C1's second guard:
-// ToggleHideClosed shares rebuild with SetSnapshot, and the same
-// Build-resets-everything defect collapsed the tree on every toggle, not
-// only on a reload.
-func (s *navTestSuite) TestToggleHideClosedTwiceRestoresExpansionExactly() {
-	m := s.model(1, 3, 20)
-	s.Require().True(m.SelectByID("c0"))
-	m.ToggleExpand() // c0 expanded, c0-g0 visible.
-
-	before := ansi.Strip(m.View())
-
-	m.ToggleHideClosed()
-	m.ToggleHideClosed()
-
-	s.Equal(before, ansi.Strip(m.View()),
-		"toggling hide-closed twice must restore the exact expanded row set")
-}
-
-// TestToggleHideClosedTwiceRestoresASubtreeHideClosedPrunedEntirely is a
-// stronger version of the sibling test above, using a fixture the reviewer's
-// own manual repro against this repository's real workspace exposed: a
-// subtree that is wholly closed gets removed from the tree entirely by
-// Retain while hide-closed is on, not merely hidden a row at a time. A
-// version of the fix that captured "currently expanded" fresh from m.roots on
-// every rebuild — rather than keeping a persistent, id-keyed record — loses
-// that subtree's expansion permanently the moment it is pruned: toggling
-// hide-closed on and back off left this fixture's row count at 5 instead of
-// the original 7, never recovering "leaf"'s visibility.
-func (s *navTestSuite) TestToggleHideClosedTwiceRestoresASubtreeHideClosedPrunedEntirely() {
-	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
-	m.SetSize(80, 20)
-	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
+// TestExpansionSurvivesASubtreeLeavingTheSnapshotEntirely is what survives of
+// TestToggleHideClosedTwiceRestoresASubtreeHideClosedPrunedEntirely, using
+// the fixture the reviewer's own manual repro against this repository's real
+// workspace exposed: a wholly-closed subtree leaves the tree entirely while
+// hide-closed is on, not merely a row at a time. Hide-closed is the app's
+// filter now, so it arrives as the narrower snapshot applyFilter hands every
+// view rather than as a local toggle — the same rebuild, reached the way the
+// composed app actually reaches it.
+//
+// A version of the fix that captured "currently expanded" fresh from m.roots
+// on every rebuild — rather than keeping a persistent, id-keyed record —
+// loses that subtree's expansion permanently the moment it is gone: narrowing
+// and widening again left this fixture's row count at 5 instead of the
+// original 7, never recovering "leaf"'s visibility. The tree's own local
+// toggle is retired, but that defect is not: the trigger moved, not the
+// state.
+func (s *navTestSuite) TestExpansionSurvivesASubtreeLeavingTheSnapshotEntirely() {
+	issues := []beads.Issue{
 		{ID: "root", Title: "root", Status: beads.StatusOpen},
 		child("open-mid", "root"),
 		{
@@ -455,17 +358,22 @@ func (s *navTestSuite) TestToggleHideClosedTwiceRestoresASubtreeHideClosedPruned
 				{IssueID: "leaf", DependsOnID: "closed-mid", Type: beads.DepParentChild},
 			},
 		},
-	}))
+	}
+	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
+	m.SetSize(80, 20)
+	m.SetSnapshot(beads.NewSnapshot(issues))
 	s.Require().True(m.SelectByID("closed-mid"))
-	m.ToggleExpand() // reveal "leaf" — a wholly-closed subtree, entirely pruned once hide-closed is on.
+	m.ToggleExpand() // reveal "leaf" — a wholly-closed subtree, gone entirely once hide-closed is on.
 
 	before := ansi.Strip(m.View())
 
-	m.ToggleHideClosed() // "closed-mid" and "leaf" both vanish: nothing under root matches or has a live descendant.
-	m.ToggleHideClosed()
+	// Exactly what the app delivers on 'c' and 'c' again: one filter, applied
+	// once, handed to every view as a snapshot.
+	m.SetSnapshot(beads.Filter{HideClosed: true}.Apply(beads.NewSnapshot(issues)))
+	m.SetSnapshot(beads.NewSnapshot(issues))
 
 	s.Equal(before, ansi.Strip(m.View()),
-		"a subtree hide-closed pruned entirely must still recover its exact expansion once the filter loosens again")
+		"a subtree the filter removed entirely must still recover its exact expansion once the filter loosens again")
 }
 
 // TestWindowStaysFullAfterAShrinkThatLeavesEnoughRows pins I3: the reviewer
@@ -560,35 +468,6 @@ func (s *navTestSuite) TestExpandByIDRoundTripsExactExpansionAtDepthTwo() {
 	s.NotContains(out, "collapsed-leaf",
 		"a node the user never expanded must stay collapsed — "+
 			"an expandByID that expands everything survives without this")
-}
-
-// TestApplyStateAppliesHideClosed closes M1's other gap: ApplyState's own
-// s.HideClosed round-trips through State (state_test.go's TestRoundTrip
-// covers that) but was never observed to actually take effect once restored.
-func (s *navTestSuite) TestApplyStateAppliesHideClosed() {
-	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
-	m.SetSize(80, 20)
-	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
-		{ID: "root", Title: "root", Status: beads.StatusOpen},
-		child("open", "root"),
-		{
-			ID: "done", Title: "done", Status: beads.StatusClosed,
-			Dependencies: []beads.Dependency{
-				{IssueID: "done", DependsOnID: "root", Type: beads.DepParentChild},
-			},
-		},
-	}))
-
-	// Expanded explicitly names "root" so the root's own collapse (every
-	// unnamed node closes, per expandByID) cannot be mistaken for hide-closed
-	// having applied — "done" must be missing because Retain pruned a
-	// non-matching closed leaf outright, not because the whole tree closed.
-	m.ApplyState(treeview.State{Expanded: []string{"root"}, HideClosed: true})
-
-	out := ansi.Strip(m.View())
-	s.Contains(out, "open", "an open sibling must still render, proving the tree is not just collapsed")
-	s.NotContains(out, "done",
-		"ApplyState must apply s.HideClosed, not merely carry it in the struct")
 }
 
 // TestSelectedRowStyleDiffersFromUnselected pins the Global Constraints'
@@ -726,14 +605,6 @@ func (s *navTestSuite) TestEveryBoundKeyProducesItsOwnObservableEffect() {
 
 		m.Update(keyMsg("O"))
 		s.NotContains(ansi.Strip(m.View()), "open-leaf", "O must collapse every node")
-	})
-
-	s.Run("c toggles hide-closed", func() {
-		m := build()
-		s.Require().Zero(m.HiddenCount())
-
-		m.Update(keyMsg("c"))
-		s.Equal(1, m.HiddenCount(), "c must toggle hide-closed")
 	})
 
 	s.Run("ctrl+b and ctrl+f page the tree", func() {

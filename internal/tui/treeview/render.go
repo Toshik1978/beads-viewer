@@ -38,31 +38,27 @@ type visibleRow struct {
 // refreshRows and rebuild both run — View slices m.rows directly rather than
 // re-walking m.roots on its own, so the row window nav.go bounds against and
 // the rows View actually draws can never drift out of step with each other.
-// hideClosed replaces the placeholder filter field Task 5.2 left here — see
-// the AMENDMENT in this task's brief — so Retain only ever narrows on this
-// one axis inside the tree; every other Filter dimension is already applied
-// upstream, once, by the app. expandedIDs is the persistent record of every
-// node's own expansion choice, keyed by issue id rather than by *Node: a
-// rebuild replaces every *Node in m.roots, and a value captured fresh from
-// the immediately-prior m.roots on each rebuild would lose a subtree's
-// expansion the moment hide-closed pruned it out entirely — expandedIDs
-// survives that because nothing but an explicit mutation (ToggleExpand,
-// ExpandAll, CollapseAll, ApplyState) ever changes it. nil distinguishes the
-// very first Build/Retain pass, whose depth==0 Expanded default must stand
-// untouched, from every later rebuild, which instead restores exactly what
-// expandedIDs already records — see rebuild's own comment.
+// There is no filter field here at all: every Filter dimension, hide-closed
+// included, is the app's, applied once upstream and arriving as a narrower
+// snapshot. expandedIDs is the persistent record of every node's own
+// expansion choice, keyed by issue id rather than by *Node: a rebuild
+// replaces every *Node in m.roots, and a value captured fresh from the
+// immediately-prior m.roots would lose a subtree's expansion the moment the
+// filter excluded it entirely — nothing but an explicit mutation
+// (ToggleExpand, ExpandAll, CollapseAll, ApplyState) ever changes it. nil
+// distinguishes the very first Build/Retain pass, whose depth==0 Expanded
+// default must stand untouched, from every later rebuild.
 //
 // A pin in this package's external test package (var _ tui.View =
-// (*Model)(nil), in view_test.go) guards the tui.View claim above. That pin
-// creates treeview_test -> tui -> treeview, not a cycle: treeview_test sits
-// outside every package's real import graph.
+// (*Model)(nil), in view_test.go) guards the tui.View claim above. It creates
+// treeview_test -> tui -> treeview, not a cycle: treeview_test sits outside
+// every package's real import graph.
 type Model struct {
 	theme       theme.Theme
 	width       int
 	height      int
 	snapshot    *beads.Snapshot
 	roots       []*Node
-	hideClosed  bool
 	expandedIDs map[string]bool
 	selected    string
 	rows        []visibleRow
@@ -117,27 +113,15 @@ func (m *Model) CollapseAll() {
 // View renders the rows inside the current viewport.
 //
 // The height clamp is what keeps a tall tree from overflowing the pane's
-// allotted space: without it, a 41-row tree at height 5 would render all 41
-// lines regardless, and internal/tui's joinPanes has no way to know that
-// happened — it assumes every pane already fits the height it was given.
+// allotted space: without it, a 41-row tree at height 5 renders all 41 lines,
+// and joinPanes assumes every pane already fits the height it was given.
 //
-// It no longer carries its own generic "no issues" placeholder for an empty
-// workspace, an empty filter result or a failed initial load — see
-// listview's identical note for the app-level replacement (Model.body,
-// empty.go), which intercepts all three before joinPanes ever calls this
-// View. hideClosed (the 'c' key) is different: it is a tree-local narrowing
-// the app-level filter cannot see, so a tree with only closed issues,
-// filtered to hide them, is the one empty case View itself is still the
-// only place that can explain — an empty m.rows here can only mean that,
-// which is what the branch below names. Without it this rendered "" (a
-// regression: pre-consolidation this pane said "No issues"), leaving a
-// blank tree pane beside a populated status bar and detail pane with no
-// hint that 'c' is the way back.
+// It carries no "no issues" placeholder of its own, exactly as listview and
+// boardview carry none — Model.body (internal/tui, empty.go) decides that at
+// the app level, before joinPanes ever calls this View. The tree kept one only
+// while hide-closed was a narrowing Model.body could not see, and that
+// message ("press c to show closed") now names the key that hides them.
 func (m *Model) View() string {
-	if len(m.rows) == 0 {
-		return m.theme.Muted.Render(uitext.Truncate("No open issues here. Press c to show closed.", m.width))
-	}
-
 	start, end := m.visibleRange()
 	visible := m.rows[start:end]
 

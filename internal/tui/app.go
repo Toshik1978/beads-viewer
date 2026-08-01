@@ -219,10 +219,10 @@ func (m *Model) SetFilter(f beads.Filter) {
 	m.applyFilter()
 }
 
-// LoadTreeState restores the tree view's persisted expansion, selection and
-// hide-closed state for beadsDir, if any was ever saved. It is meant to run
-// once, after the initial snapshot is already in place, so the ids named in
-// the saved state resolve against a built tree.
+// LoadTreeState restores the tree view's persisted expansion and selection
+// state for beadsDir, if any was ever saved. It is meant to run once, after
+// the initial snapshot is already in place, so the ids named in the saved
+// state resolve against a built tree.
 //
 // ApplyState only runs when found is true — a first run with nothing ever
 // saved must leave the tree exactly as SetSnapshot's own Build defaults left
@@ -267,9 +267,9 @@ func (m *Model) LoadTreeState(beadsDir string) {
 	m.syncDetail()
 }
 
-// SaveTreeState persists the tree view's current expansion, selection and
-// hide-closed state for beadsDir. Failures never stop the exit — that would
-// be worse than forgetting it next time — but are logged (I7).
+// SaveTreeState persists the tree view's current expansion and selection
+// state for beadsDir. Failures never stop the exit — that would be worse than
+// forgetting it next time — but are logged (I7).
 func (m *Model) SaveTreeState(beadsDir string) {
 	if tree, ok := m.views[1].(*treeview.Model); ok {
 		if err := tree.ExportState().Save(beadsDir); err != nil && m.log != nil {
@@ -418,7 +418,13 @@ func (m *Model) statusLine() string {
 	st.Filter = m.filter
 	st.View = viewKindAt(m.active)
 	st.Lane = m.boardLaneName()
-	st.Hidden = m.treeHiddenCount()
+	st.Hidden = 0
+	if m.filter.HideClosed {
+		// Minus tombstones: they are hidden with the toggle off too, so counting
+		// them reports issues hide-closed did not hide (1 closed + 2 tombstones
+		// read "3 hidden").
+		st.Hidden = st.Counts.Closed - st.Counts.Tombstones
+	}
 
 	return renderStatus(st, m.theme, m.layout.Width)
 }

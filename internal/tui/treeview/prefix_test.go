@@ -396,14 +396,11 @@ func (s *prefixTestSuite) TestExpandAllAndCollapseAll() {
 }
 
 // TestSelectedIsNilWhenEmpty pins that an empty tree neither panics nor
-// selects anything. Model.body (internal/tui, empty.go) intercepts an
-// app-level empty workspace, empty filter result or failed initial load
-// before joinPanes ever calls this pane's own View — see render.go's View
-// doc comment — so this pane's own empty-rows branch, added for the
-// hideClosed regression, fires here too even though the reason (an empty
-// snapshot, not hideClosed) does not match its wording; that mismatch is
-// unreachable through the composed app, only through this package's own
-// direct construction.
+// selects anything. It renders "" rather than a placeholder: Model.body
+// (internal/tui, empty.go) intercepts an empty workspace, an empty filter
+// result and a failed initial load before joinPanes ever calls this View, so
+// the only way to reach this state is the direct construction below — the
+// same arrangement listview and boardview have had since that consolidation.
 func (s *prefixTestSuite) TestSelectedIsNilWhenEmpty() {
 	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
 	m.SetSize(80, 20)
@@ -412,7 +409,7 @@ func (s *prefixTestSuite) TestSelectedIsNilWhenEmpty() {
 	s.Nil(m.Selected())
 	var out string
 	s.NotPanics(func() { out = m.View() })
-	s.NotEmpty(out)
+	s.Empty(out)
 }
 
 func (s *prefixTestSuite) TestSetSnapshotPreservesSelectionAcrossReload() {

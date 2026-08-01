@@ -107,6 +107,10 @@ func (s *deriveTestSuite) TestCounts() {
 	// Closed counts closed and tombstoned — both are terminal. d-closed,
 	// d-tomb and d-epic-all-closed-kid (the epic-rule fixture's closed child).
 	s.Equal(3, counts.Closed)
+	// Tombstones is the deletion markers inside that 3 (d-tomb alone), broken
+	// out so a caller reporting what hide-closed hides can subtract them —
+	// they are hidden with the toggle off too.
+	s.Equal(1, counts.Tombstones)
 	s.Positive(counts.Open)
 	s.Positive(counts.Ready)
 	s.Positive(counts.Blocked)

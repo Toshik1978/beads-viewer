@@ -9,30 +9,32 @@ import (
 	"path/filepath"
 )
 
-// State is a tree view's persisted UI state: which nodes were open, which
-// one was selected, and whether hide-closed was active. It is bv's own
-// preference, not tracker data — br owns .beads, and this never lives there.
+// State is a tree view's persisted UI state: which nodes were open and which
+// one was selected. It is bv's own preference, not tracker data — br owns
+// .beads, and this never lives there.
+//
+// It used to carry hide_closed too, back when that was a tree-local
+// narrowing. Now that every view shares that filter, it is dropped rather
+// than migrated: restoring it would hide closed issues in two panes the user
+// never set it on. Older files still load — json ignores an unknown field.
 type State struct {
-	Expanded   []string `json:"expanded"`
-	Selected   string   `json:"selected"`
-	HideClosed bool     `json:"hide_closed"`
+	Expanded []string `json:"expanded"`
+	Selected string   `json:"selected"`
 }
 
 // LoadState reads a workspace's persisted tree state.
 //
-// A missing or unparsable file returns a zero State and no error on
-// purpose: forgetting expansion state must never keep bv from starting, so
-// every failure on this path — a missing file, a permission error, a
-// truncated write from a crash mid-Save — is folded into the same
-// "nothing to restore" outcome rather than surfaced to the caller.
+// A missing or unparsable file returns a zero State and no error on purpose:
+// forgetting expansion state must never keep bv from starting, so every
+// failure on this path — a missing file, a permission error, a truncated
+// write from a crash mid-Save — folds into the same "nothing to restore"
+// outcome rather than reaching the caller.
 //
 // found reports whether a state file was actually read and parsed, which
-// (State, error) alone cannot say: a zero State is both what "nothing was
-// ever saved" and what "hide-closed was saved on, and every node was saved
-// collapsed" look like once loaded. A caller that applies a zero State either
-// way — LoadTreeState, before this existed — overwrites Build's own depth==0
-// default with "collapse everything" on every single first run, since a
-// missing file and a genuinely-all-collapsed one were indistinguishable.
+// (State, error) alone cannot say: a zero State is what both "nothing was
+// ever saved" and "every node was saved collapsed" look like once loaded. A
+// caller that applies a zero State either way — LoadTreeState, before this
+// existed — overwrites Build's depth==0 default with "collapse everything".
 func LoadState(beadsDir string) (state State, found bool, err error) {
 	data, err := os.ReadFile(StatePath(beadsDir))
 	if err != nil {

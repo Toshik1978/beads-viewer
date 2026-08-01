@@ -12,7 +12,6 @@ import (
 	"github.com/Toshik1978/beads-viewer/internal/beads"
 	"github.com/Toshik1978/beads-viewer/internal/config"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
-	"github.com/Toshik1978/beads-viewer/internal/tui/treeview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/uitext"
 )
 
@@ -26,14 +25,14 @@ const statusSeparator = " │ "
 // statusState is the status bar's content for one frame. Model composes a
 // fresh value every render (statusLine, app.go) from live counts/filter/view
 // plus Message/IsError/token, the part that persists across frames — set by
-// Model.setStatus, called on a reload (success or failure) and on yank.
+// Model.setStatus on a reload (success or failure) and on yank.
 type statusState struct {
 	Counts beads.Counts
 	Filter beads.Filter
 	View   config.ViewKind
 	Lane   string
-	// Hidden is how many issues the tree's hide-closed toggle (I2) is
-	// hiding; 0 when off or the tree is not active. See treeHiddenCount.
+	// Hidden is how many issues hide-closed hides, 0 when off. One filter feeds
+	// every pane, so unlike Lane this survives a view switch.
 	Hidden  int
 	Message string
 	IsError bool
@@ -51,17 +50,6 @@ type statusState struct {
 func (m *Model) setStatus(message string, isError bool) {
 	m.status.token++
 	m.status.Message, m.status.IsError = message, isError
-}
-
-// treeHiddenCount is how many issues the tree's own 'c' toggle is currently
-// hiding, or 0 off-tree (I2). Mirrors boardLaneName's shape (app.go).
-func (m *Model) treeHiddenCount() int {
-	tree, ok := m.views[1].(*treeview.Model)
-	if !ok || m.active != 1 {
-		return 0
-	}
-
-	return tree.HiddenCount()
 }
 
 // renderStatus composes the one-line status bar, dropping segments from the

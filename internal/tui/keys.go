@@ -19,10 +19,10 @@ const clipboardMessageTTL = 3 * time.Second
 
 // KeyMap is the single source of truth for bv's key bindings. Views that need
 // to know a binding — the active view's own navigation, and the help overlay
-// Task 7.1 adds — read it from here rather than hard-coding a keystroke a
-// second time.
+// — read it from here rather than hard-coding a keystroke a second time.
 type KeyMap struct {
 	Quit       key.Binding
+	HideClosed key.Binding
 	Up         key.Binding
 	Down       key.Binding
 	ViewList   key.Binding
@@ -41,15 +41,18 @@ type KeyMap struct {
 // alternative yet, so this is the only constructor.
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
-		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		Down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		ViewList:  key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "list")),
-		ViewTree:  key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "tree")),
-		ViewBoard: key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "board")),
-		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Filter:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
-		Yank:      key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yank")),
+		Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		// "hide closed" is beads.Filter.Describe's own wording, so the status bar
+		// and the overlay name this dimension the same way.
+		HideClosed: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "hide closed")),
+		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		ViewList:   key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "list")),
+		ViewTree:   key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "tree")),
+		ViewBoard:  key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "board")),
+		Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Filter:     key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
+		Yank:       key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yank")),
 		// ScrollUp and ScrollDown are pgup/pgdown rather than the list's own
 		// up/k and down/j: bubbles/v2/list's default keymap already binds
 		// pgup and pgdown to PrevPage/NextPage (list/keys.go), which would
@@ -194,6 +197,15 @@ func (m *Model) toggleFocus() {
 	m.overlay.focus = focusView
 }
 
+// toggleHideClosed flips hide-closed on the one filter every view shares. It
+// goes through SetFilter rather than mutating m.filter, so the change reaches
+// all three views by the single path applyFilter documents.
+func (m *Model) toggleHideClosed() {
+	filter := m.filter
+	filter.HideClosed = !filter.HideClosed
+	m.SetFilter(filter)
+}
+
 // detailOnScreen reports whether the detail pane is actually rendered. The
 // nil check is the same one joinPanes, applyLayout and syncDetail all make: a
 // Model built directly rather than through NewModel (as WhiteBoxSuite's
@@ -247,6 +259,10 @@ func (m *Model) handleActionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case key.Matches(msg, m.keys.Focus):
 		m.toggleFocus()
+
+		return nil, true
+	case key.Matches(msg, m.keys.HideClosed):
+		m.toggleHideClosed()
 
 		return nil, true
 	case key.Matches(msg, m.keys.Yank):
