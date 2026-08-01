@@ -16,3 +16,8 @@
 
 # Local tooling
 .task/
+
+# Per-epic scratch for subagent-driven execution: review packages and
+# implementer reports. Disposable by design — the durable record is the bead
+# comments in .beads/ and the git history, so `git clean -fdx` costs nothing.
+/.superpowers/
