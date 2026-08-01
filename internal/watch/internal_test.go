@@ -53,9 +53,21 @@ func (s *WhiteBoxSuite) TestForcesReloadWhenBurstExceedsCeiling() {
 	s.T().Cleanup(func() { _ = w.Close() })
 
 	stop := make(chan struct{})
-	defer close(stop)
+	done := make(chan struct{})
+	// Signal AND join. Closing stop alone leaves the writer free to be midway
+	// through os.WriteFile when the test returns, and t.TempDir's RemoveAll
+	// runs in t.Cleanup — after this defer — so the file lands back in the
+	// directory being deleted and cleanup fails with "directory not empty".
+	// That is a race, so it passes locally and fails somewhere expensive: it
+	// took down a release build, not a pull request.
+	defer func() {
+		close(stop)
+		<-done
+	}()
 
 	go func() {
+		defer close(done)
+
 		ticker := time.NewTicker(debounce / 2)
 		defer ticker.Stop()
 
