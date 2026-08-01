@@ -459,7 +459,7 @@ func keyActions(m *Model) map[string]func() {
 		"right": m.MoveRight, "l": m.MoveRight,
 		"home": m.JumpToTop, "g": m.JumpToTop,
 		"end": m.JumpToBottom, "G": m.JumpToBottom,
-		"tab":   m.CycleSwimLane,
+		"s":     m.CycleSwimLane,
 		"space": m.ToggleExpand,
 	}
 }

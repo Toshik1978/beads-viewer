@@ -125,6 +125,27 @@ func (s *boardTestSuite) TestEmptyColumnIsReachableAndSelectsNothing() {
 	s.NotPanics(func() { _ = m.View() })
 }
 
+func (s *boardTestSuite) TestSCyclesTheSwimlane() {
+	m := s.model(s.sample(), 100, 20)
+	before := m.Lane()
+
+	m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+
+	s.NotEqual(before, m.Lane())
+}
+
+// TestTabNoLongerCyclesTheSwimlane pins bv-f7b.2.3: tab is the app-level
+// focus key now. A board that still consumed it would cycle the swimlane
+// every time the user moved focus.
+func (s *boardTestSuite) TestTabNoLongerCyclesTheSwimlane() {
+	m := s.model(s.sample(), 100, 20)
+	before := m.Lane()
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	s.Equal(before, m.Lane())
+}
+
 func (s *boardTestSuite) TestCycleSwimLanePreservesSelection() {
 	m := s.model(s.sample(), 140, 30)
 	s.Require().True(m.SelectByID("c"))
@@ -505,7 +526,9 @@ func boardKeyMsg(key string) tea.KeyPressMsg {
 // "space", say — would leave that binding permanently dead in the actual
 // binary while every other test here stayed green. treeview's nav_test.go
 // already pins this for its own package; boardview pinned neither "space"
-// nor "tab" before this. Driving Update itself, once per binding (plus its
+// nor "s" before this — "s" is now covered by TestSCyclesTheSwimlane above
+// instead of a table entry here, since driving it through Update is the same
+// typo guard either way. Driving Update itself, once per binding (plus its
 // letter alias where it has one), is what a literal-string typo cannot
 // survive.
 func (s *boardTestSuite) TestUpdateDrivesEveryKeyBinding() {
@@ -577,10 +600,6 @@ func (s *boardTestSuite) TestUpdateDrivesEveryKeyBinding() {
 			m.JumpToBottom()
 			m.Update(boardKeyMsg("g"))
 			s.Equal("a", m.SelectedID())
-		}},
-		{"tab cycles the swimlane", func(m *boardview.Model) {
-			m.Update(boardKeyMsg("tab"))
-			s.Contains(m.View(), "P0 (", "tab must regroup the board onto Priority's own columns")
 		}},
 		{"space toggles expansion", func(m *boardview.Model) {
 			before := strings.Count(m.View(), "\n")

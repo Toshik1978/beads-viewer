@@ -86,7 +86,7 @@ func renderHelpBody(keys KeyMap, th theme.Theme, width, height int, note string)
 // silently.
 func helpGroups(keys KeyMap) []helpGroup {
 	return []helpGroup{
-		{"Global", []key.Binding{keys.Quit, keys.Help, keys.Yank}},
+		{"Global", []key.Binding{keys.Quit, keys.Help, keys.Yank, keys.Focus}},
 		{"Views", []key.Binding{keys.ViewList, keys.ViewTree, keys.ViewBoard}},
 		{"Filtering", []key.Binding{
 			keys.Filter,
@@ -102,7 +102,7 @@ func helpGroups(keys KeyMap) []helpGroup {
 			key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "jump to parent (tree)")),
 			key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "expand all (tree)")),
 			key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "collapse all (tree)")),
-			key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle swimlane (board)")),
+			key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle swimlane (board)")),
 			keys.ScrollUp, keys.ScrollDown,
 			key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "page up (tree)")),
 			key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "page down (tree)")),
