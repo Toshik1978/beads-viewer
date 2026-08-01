@@ -9,5 +9,10 @@
 # Coverage run artefacts (`task coverage`, and the CI job it mirrors)
 /test.json
 
+# The release workflow writes the GitHub release body here before invoking
+# GoReleaser, which refuses to run against a dirty tree — so an untracked file
+# in the repo root aborts the release before it builds anything.
+/release-body.md
+
 # Local tooling
 .task/
