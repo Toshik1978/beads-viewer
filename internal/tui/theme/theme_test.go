@@ -137,3 +137,54 @@ func (s *themeTestSuite) TestFrameStaysBackgroundAgnostic() {
 	// here, it just carries no assumption about the background behind it.
 	s.NotEqual(th.Frame(false).Render("x"), th.Frame(true).Render("x"))
 }
+
+func (s *themeTestSuite) TestTypeStylesDistinguishTheCommonTypes() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+
+	bug := th.Type(beads.TypeBug).Render("x")
+	epic := th.Type(beads.TypeEpic).Render("x")
+	task := th.Type(beads.TypeTask).Render("x")
+
+	s.NotEqual(bug, epic)
+	s.NotEqual(bug, task)
+	s.NotEqual(epic, task)
+}
+
+func (s *themeTestSuite) TestUnknownTypeFallsBackToBase() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+
+	// br models issue_type as an open set and bv renders rather than
+	// validates, so a type nobody here has heard of must still get a style.
+	s.Equal(th.Base.Render("x"), th.Type(beads.IssueType("wibble")).Render("x"))
+}
+
+func (s *themeTestSuite) TestStatusStylesDistinguishProgressFromBlocked() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+
+	s.NotEqual(
+		th.Status(beads.StatusInProgress).Render("x"),
+		th.Status(beads.StatusBlocked).Render("x"),
+	)
+	s.NotEqual(
+		th.Status(beads.StatusOpen).Render("x"),
+		th.Status(beads.StatusClosed).Render("x"),
+	)
+}
+
+func (s *themeTestSuite) TestUnknownStatusFallsBackToBase() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+
+	s.Equal(th.Base.Render("x"), th.Status(beads.Status("triaging")).Render("x"))
+}
+
+func (s *themeTestSuite) TestTypeAndStatusStayBackgroundAgnostic() {
+	th := theme.New(config.ThemeAuto, theme.BackgroundUnknown)
+	s.Require().Equal(theme.SchemeAgnostic, th.Scheme)
+
+	// Base sets no attributes at all under this scheme — that is the one pair
+	// guaranteed legible when nothing about the background is known — so the
+	// fallback must not have acquired a colour on the way through.
+	s.Equal("x", th.Type(beads.IssueType("wibble")).Render("x"))
+	s.Equal("x", th.Status(beads.Status("triaging")).Render("x"))
+	s.NotEqual(th.Status(beads.StatusOpen).Render("x"), th.Status(beads.StatusBlocked).Render("x"))
+}

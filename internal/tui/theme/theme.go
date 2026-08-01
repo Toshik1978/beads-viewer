@@ -163,6 +163,54 @@ func (t Theme) TypeGlyph(k beads.IssueType) string {
 	}
 }
 
+// Type returns the style an issue type's glyph is rendered in.
+//
+// Every arm reuses a style the palette already carries rather than
+// introducing a colour of its own: those are already tuned per scheme, and
+// SchemeAgnostic builds Muted and Base from attributes rather than colours
+// precisely because it must assume nothing about the background.
+//
+// The default arm is the open-enum path, not a defensive one — br models
+// issue_type as an open set and bv renders rather than validates, so an
+// unrecognised type is data, not an error.
+func (t Theme) Type(k beads.IssueType) lipgloss.Style {
+	//nolint:revive // TypeTask mirrors default on purpose: naming it keeps a future type visibly unhandled.
+	switch k {
+	case beads.TypeBug:
+		return t.Error
+	case beads.TypeEpic:
+		return t.Title
+	case beads.TypeFeature, beads.TypeQuestion:
+		return t.Accent
+	case beads.TypeChore, beads.TypeDocs:
+		return t.Muted
+	case beads.TypeTask:
+		return t.Base
+	default:
+		return t.Base
+	}
+}
+
+// Status returns the style a status label is rendered in. See Type for why
+// these reuse existing styles and why the default arm carries real traffic.
+func (t Theme) Status(s beads.Status) lipgloss.Style {
+	//nolint:revive // StatusOpen mirrors default on purpose: naming it keeps a future status visibly unhandled.
+	switch s {
+	case beads.StatusInProgress:
+		return t.Accent
+	case beads.StatusBlocked:
+		return t.Error
+	case beads.StatusPinned:
+		return t.Title
+	case beads.StatusClosed, beads.StatusTombstone, beads.StatusDeferred, beads.StatusDraft:
+		return t.Muted
+	case beads.StatusOpen:
+		return t.Base
+	default:
+		return t.Base
+	}
+}
+
 // resolveAuto is the terminal-detection branch of Resolve, split out so each
 // outcome — including no answer — is its own named case rather than an
 // implicit default.
