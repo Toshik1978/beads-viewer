@@ -1,0 +1,105 @@
+version: "3"
+
+vars:
+  BINARY: bv
+  PKG: github.com/Toshik1978/beads-viewer
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  setup:
+    desc: Install pinned tooling and download modules.
+    cmds:
+      - mise install
+      - go mod download
+
+  format:
+    desc: Format the codebase (gofumpt, gci, golines via golangci-lint).
+    cmds:
+      - golangci-lint fmt
+
+  format:check:
+    # Redundant with `lint` — golangci-lint v2 runs the formatters as part of
+    # `run` — but it is far faster and prints a diff rather than a one-liner,
+    # so `check` runs it first for the better failure message.
+    desc: Fail if the codebase is not formatted.
+    cmds:
+      - golangci-lint fmt --diff
+
+  lint:
+    desc: Run all linters — the same gate CI enforces.
+    cmds:
+      - golangci-lint run
+
+  test:
+    desc: Run the test suite.
+    cmds:
+      - go test ./...
+
+  build:
+    desc: Build the bv binary.
+    cmds:
+      - go build -trimpath -o {{.BINARY}} ./cmd/bv
+
+  check:
+    desc: The gate. Must exit 0 before every commit; CI runs exactly this.
+    cmds:
+      - task: format:check
+      - task: lint
+      - task: test
+
+  coverage:
+    desc: Report total statement coverage and fail below the floor, as CI does.
+    vars:
+      # Duplicated in ci.yml's coverage gate; move both together.
+      MIN_COVERAGE: 80
+    cmds:
+      # -coverpkg=./... credits a line whichever package's test reaches it.
+      # Without it internal/beads reads far lower than it is: 89.5% vs 90.8%.
+      - go test ./... -covermode=atomic -coverpkg=./... -coverprofile=cover.out
+      - |
+        total=$(go tool cover -func=cover.out | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
+        echo "total coverage: $total% (floor {{.MIN_COVERAGE}}%)"
+        # awk, not [ -lt ]: $total is a float and the shell test is integer-only.
+        awk "BEGIN{exit !($total >= {{.MIN_COVERAGE}})}" || {
+          echo "error: coverage $total% is below the {{.MIN_COVERAGE}}% floor" >&2
+          exit 1
+        }
+
+  audit:
+    desc: Scan for vulnerabilities this module's code actually reaches.
+    cmds:
+      # On demand, not in go.mod: a tool, not a dependency of the binary.
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  clean:
+    desc: Remove build output.
+    cmds:
+      - rm -rf {{.BINARY}} dist/ cover.out test.json
+
+  changelog:
+    desc: Prepend the generated commit list for the next release to CHANGELOG.md.
+    cmds:
+      # --unreleased is required alongside --prepend. --bump and --tag are
+      # alternatives: --bump derives the version, --tag states it.
+      #
+      # --bump is unusable until the first tag exists — with none it computes
+      # "0.1.0", no "v", failing tag_pattern = "v[0-9]*". Self-resolves after
+      # v1.0.0; until then pass TAG.
+      - git-cliff --unreleased {{if .TAG}}--tag {{.TAG}}{{else}}--bump{{end}} --prepend CHANGELOG.md
+
+  release:check:
+    desc: Validate .goreleaser.yaml.
+    cmds:
+      - goreleaser check
+
+  release:verify:
+    desc: Verify the tag matches the changelog before tagging.
+    cmds:
+      - .github/scripts/check-release-version.sh {{.TAG}}
+
+  release:snapshot:
+    desc: Build the release archives locally without publishing.
+    cmds:
+      - goreleaser release --snapshot --clean

@@ -1,0 +1,13 @@
+# Build output
+/bv
+/dist/
+
+# Go
+*.test
+*.out
+
+# Coverage run artefacts (`task coverage`, and the CI job it mirrors)
+/test.json
+
+# Local tooling
+.task/

@@ -1,0 +1,55 @@
+name: Docs
+
+# The licensing backstop for prose-only changes, which skip ci.yml.
+#
+# The sweep reads every tracked file, and prose is where a bad reference
+# actually gets written — so dropping it here would remove the check exactly
+# where it earns its keep. `paths-ignore` skips a whole workflow, never one
+# job, so this cannot live inside ci.yml.
+#
+# This list is the complement of ci.yml's `paths-ignore`; a test in
+# internal/licensing enforces that. It cannot be a grep step: the forbidden
+# strings live in the sweep's own test, and spelling them out here would make
+# this file fail it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - 'docs/ARCHITECTURE.md'
+      - 'docs/RELEASING.md'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - 'docs/ARCHITECTURE.md'
+      - 'docs/RELEASING.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  licensing:
+    name: Licensing guard
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The sweep shells out to `git ls-files`.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - run: go test ./internal/licensing/

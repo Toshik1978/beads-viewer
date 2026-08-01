@@ -1,0 +1,6 @@
+{"id":"bv-h1","title":"Unknown status","status":"triaged","priority":2,"issue_type":"task","created_at":"2026-07-01T10:00:00Z","updated_at":"2026-07-01T10:00:00Z"}
+
+{"id":"bv-h2","title":"Unknown type","status":"open","priority":2,"issue_type":"spike","created_at":"2026-07-01T10:00:00Z","updated_at":"2026-07-01T10:00:00Z"}
+{"id":"bv-h3","title":"Unknown field","status":"open","priority":2,"issue_type":"task","created_at":"2026-07-01T10:00:00Z","updated_at":"2026-07-01T10:00:00Z","future_field_br_adds_later":{"nested":true}}
+{"id":"bv-h4","title":"Label br rejects","status":"open","priority":2,"issue_type":"task","created_at":"2026-07-01T10:00:00Z","updated_at":"2026-07-01T10:00:00Z","labels":["needs review!","ok-label"]}
+{"id":"bv-h5","title":"Minimal record","created_at":"2026-07-01T10:00:00Z","updated_at":"2026-07-01T10:00:00Z"}

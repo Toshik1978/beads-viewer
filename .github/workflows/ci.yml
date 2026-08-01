@@ -1,0 +1,256 @@
+name: CI
+
+# The only markdown that cannot affect a job. Not '**.md': the licensing sweep
+# reads every tracked file and release-config reads CHANGELOG.md. Complement of
+# docs.yml's `paths` — a test in internal/licensing enforces that.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - 'docs/ARCHITECTURE.md'
+      - 'docs/RELEASING.md'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - 'docs/ARCHITECTURE.md'
+      - 'docs/RELEASING.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The licensing sweep runs `git ls-files`.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Pinned, not `latest`: a v3 would move CI onto a config schema
+      # `.mise.toml` does not track. No separate format step — v2 runs the
+      # formatters as part of `run`.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+
+      - name: test
+        run: go test ./...
+
+      - name: build
+        run: go build -trimpath -o bv ./cmd/bv
+
+  # Here rather than only in release.yml so a broken release config fails a PR
+  # instead of a tag that is already public.
+  release-config:
+    name: Release config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
+
+      # Go carries no version in a manifest, so the changelog's first heading
+      # is what names the version this tree is ready to publish.
+      - name: Check the current version has release notes
+        run: |
+          tag=$(sed -n 's/^## \(v[0-9][^ ]*\).*/\1/p' CHANGELOG.md | head -1)
+          if [ -z "$tag" ]; then
+            echo "error: no '## vX.Y.Z' heading found in CHANGELOG.md" >&2
+            exit 1
+          fi
+          echo "changelog head: $tag"
+          .github/scripts/check-release-version.sh "$tag"
+          .github/scripts/extract-changelog.sh "$tag" >/dev/null
+
+  # The only job that runs the binary. A build that dies on startup passes
+  # every job above.
+  smoke:
+    name: Install smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install ./cmd/bv
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: bv --version
+
+  # Reachability-based, so a finding is a call chain, not advisory noise. No
+  # ignore list: an audit that cannot fail is decoration.
+  vuln:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: $(go env GOPATH)/bin/govulncheck ./...
+
+  # Feeds the README badges from a public gist. The 80% floor sits well below
+  # the measured 90.8% on purpose: that far below, it fires only on a collapse
+  # instead of policing ordinary movement. Never ratchet it.
+  coverage:
+    name: Coverage
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+      # In env so the gist step can be skipped with a plain `if:`.
+      GIST_ID: ${{ secrets.GIST_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # -coverpkg credits a line whichever package's test reaches it: 89.5%
+      # vs 90.8% here. `shell: bash` adds the pipefail the default lacks;
+      # `|| true` defers failing to the gate, so the parser can name the test.
+      - name: Run tests with coverage
+        shell: bash
+        run: |
+          go test ./... -covermode=atomic -coverpkg=./... -coverprofile=cover.out -json \
+            | tee test.json || true
+
+      - name: Derive badge values
+        shell: bash
+        run: |
+          COVERAGE=$(go tool cover -func=cover.out \
+            | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
+          if [ -z "$COVERAGE" ]; then
+            echo "no total line in the coverage profile; refusing to publish" >&2
+            exit 1
+          fi
+          echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
+
+          COLOR=red
+          awk "BEGIN{exit !($COVERAGE >= 50)}" && COLOR=orange
+          awk "BEGIN{exit !($COVERAGE >= 60)}" && COLOR=yellow
+          awk "BEGIN{exit !($COVERAGE >= 70)}" && COLOR=yellowgreen
+          awk "BEGIN{exit !($COVERAGE >= 80)}" && COLOR=green
+          awk "BEGIN{exit !($COVERAGE >= 90)}" && COLOR=brightgreen
+          echo "COVERAGE_COLOR=$COLOR" >> "$GITHUB_ENV"
+
+          # From -json, not "ok" lines: testify suites are one top-level Test
+          # per package, so that reports 12 for a suite of 566. Zero events
+          # refuses, so a run that never started cannot render green.
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json, sys
+          passed = failed = 0
+          with open("test.json") as f:
+              for line in f:
+                  line = line.strip()
+                  if not line.startswith("{"):
+                      continue
+                  try:
+                      e = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  if not e.get("Test"):
+                      continue
+                  if e.get("Action") == "pass":
+                      passed += 1
+                  elif e.get("Action") == "fail":
+                      failed += 1
+          if passed == 0:
+              print("no test events parsed; refusing to publish a badge",
+                    file=sys.stderr)
+              sys.exit(1)
+          print(f"TESTS_MSG={passed} passed")
+          print(f"TESTS_COLOR={'brightgreen' if failed == 0 else 'red'}")
+          print(f"TESTS_FAILED={failed}")
+          PY
+
+      # Publish BEFORE gating: failing first skips this step on exactly the
+      # runs that matter, leaving a broken main showing a green badge.
+      - name: Publish badge endpoints to the gist
+        if: env.GIST_ID != ''
+        uses: actions/github-script@v9
+        env:
+          COVERAGE: ${{ env.COVERAGE }}
+          COVERAGE_COLOR: ${{ env.COVERAGE_COLOR }}
+          TESTS_MSG: ${{ env.TESTS_MSG }}
+          TESTS_COLOR: ${{ env.TESTS_COLOR }}
+        with:
+          github-token: ${{ secrets.GIST_SECRET_TOKEN }}
+          script: |
+            const badge = (label, message, color) => ({
+              content: JSON.stringify({
+                schemaVersion: 1, label, namedLogo: "go", message, color,
+                cacheSeconds: 180,
+              }, null, 2),
+            });
+            await github.rest.gists.update({
+              gist_id: process.env.GIST_ID,
+              files: {
+                'coverage.json': badge("Coverage", `${process.env.COVERAGE}%`,
+                                       process.env.COVERAGE_COLOR),
+                'tests.json': badge("Tests", process.env.TESTS_MSG,
+                                    process.env.TESTS_COLOR),
+              },
+            });
+
+      # Both conditions evaluated before exit, so one run reports everything.
+      # MIN_COVERAGE is duplicated in Taskfile.yml; move both.
+      - name: Check test and coverage gates
+        shell: bash
+        env:
+          MIN_COVERAGE: "80"
+        run: |
+          echo "coverage=$COVERAGE% ($COVERAGE_COLOR), $TESTS_MSG, $TESTS_FAILED failed"
+          failed=0
+
+          if [ "$TESTS_FAILED" -ne 0 ]; then
+            echo "error: $TESTS_FAILED test(s) failed" >&2
+            failed=1
+          fi
+
+          # awk, not [ -lt ]: COVERAGE is a float; the shell test is not.
+          if ! awk "BEGIN{exit !($COVERAGE >= $MIN_COVERAGE)}"; then
+            echo "error: coverage $COVERAGE% is below the $MIN_COVERAGE% floor" >&2
+            failed=1
+          fi
+
+          [ "$failed" -eq 0 ]

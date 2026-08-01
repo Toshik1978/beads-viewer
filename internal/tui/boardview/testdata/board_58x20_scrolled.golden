@@ -1,0 +1,6 @@
+<1   In Progress (1)         Blocked (0)             2>  
+     0 ready · 0 blocked     0 ready · 0 blocked         
+     ┌─────────────────────┐                             
+     │· c                P0│                             
+     │in flight            │                             
+     └─────────────────────┘                             

@@ -1,0 +1,54 @@
+version: 2
+
+project_name: bv
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: bv
+    main: ./cmd/bv
+    binary: bv
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: bv
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # LICENSE is here deliberately: MIT requires the copyright notice to
+    # accompany every copy, and an archive containing only the binary would
+    # not carry it.
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+# The changelog pipe is left enabled, deliberately: `changelog: disable: true`
+# also makes GoReleaser ignore `--release-notes` entirely and render an empty
+# body, which is the exact failure extract-changelog.sh exists to prevent,
+# arriving through the other door. With the pipe enabled and --release-notes
+# pointing at the extracted section, it loads that file, uses it as the
+# release body, and generates nothing further — hand-written prose still
+# wins, and the body is never empty.
+release:
+  # Pinned deliberately, not left to remote inference: GoReleaser only derives
+  # owner/name from `origin` when this block is ABSENT, and once present it
+  # wins silently and forever. Without it, a repo rename, a move to an org, or
+  # a fork's tag push would each publish to the wrong coordinates with no
+  # warning. Re-check or drop this once `origin` exists — see RELEASING.md
+  # Step 1.2.
+  github:
+    owner: Toshik1978
+    name: beads-viewer
+  draft: false
+  prerelease: auto

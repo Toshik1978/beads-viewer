@@ -1,0 +1,59 @@
+version: 2
+updates:
+  # The charm group exists because bubbletea, bubbles, lipgloss and glamour
+  # are released together; bumping one alone builds against two versions of
+  # the same rendering primitives.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      # Order matters: a dependency joins the first matching group, so charm
+      # must precede the catch-all.
+      charm:
+        patterns:
+          - "charm.land/*"
+          - "github.com/charmbracelet/*"
+      # Everything else, so a quiet week is one PR rather than five, each
+      # re-running the matrix. Majors stay ungrouped — those need reading.
+      gomod:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # Actions referenced by workflows under .github/workflows/.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: ci
+      include: scope
+
+    # Every action here is pinned to a moving major tag (`@v7`), so minor and
+    # patch updates arrive without a commit. Dependabot cannot tell an alias
+    # from a version: it reads `@v9` as "9", compares 9 < 9.1.2, and proposes a
+    # pin — freezing a self-updating alias, and moving it BACKWARDS if `v9`
+    # already points past that. Majors are still proposed; those need a commit.
+    #
+    # A wildcard is safe only while no action is pinned to an exact x.y.z —
+    # TestEveryActionUsesAMovingMajorTag enforces that.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - major

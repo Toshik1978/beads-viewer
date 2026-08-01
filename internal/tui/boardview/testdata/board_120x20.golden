@@ -1,0 +1,10 @@
+Open (2)                In Progress (1)         Blocked (0)             Closed (1)              » Other (0)            
+2 ready · 0 blocked     0 ready · 0 blocked     0 ready · 0 blocked     0 ready · 0 blocked     0 ready · 0 blocked    
+┌─────────────────────┐ ┌─────────────────────┐                         ┌─────────────────────┐                        
+│· a                P1│ │· c                P0│                         │· d                P0│                        
+│open one             │ │in flight            │                         │finished             │                        
+└─────────────────────┘ └─────────────────────┘                         └─────────────────────┘                        
+┌─────────────────────┐                                                                                                
+│· b                P2│                                                                                                
+│open two             │                                                                                                
+└─────────────────────┘                                                                                                

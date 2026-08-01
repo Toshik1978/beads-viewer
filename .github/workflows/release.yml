@@ -1,0 +1,96 @@
+name: Release
+
+# Cut a release by pushing a tag: `git tag v1.0.0 && git push origin v1.0.0`.
+# The tag is the version, and this workflow only reads the repository. Full
+# sequence in docs/RELEASING.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  # Never cancel midway: a half-finished run can leave a partial asset set.
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # GoReleaser needs the tag objects; the licensing sweep in
+          # `task check` needs `git ls-files`.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # install-only: `task check` runs the lint itself a step later.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          install-only: true
+
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Never publish something that would not pass its own gate.
+      - name: Run the gate
+        run: task check
+
+      # The only guard that the tag is the CURRENT entry — extract-changelog
+      # below passes for any section anywhere in the file.
+      - name: Check the tag matches the changelog
+        run: .github/scripts/check-release-version.sh "$GITHUB_REF_NAME"
+
+      - name: Extract the release body from CHANGELOG.md
+        run: .github/scripts/extract-changelog.sh "$GITHUB_REF_NAME" > release-body.md
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          # --release-notes is read by the changelog pipe, which is left
+          # enabled for that reason alone. See `changelog:` in .goreleaser.yaml.
+          args: release --clean --release-notes=release-body.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The notes are the one part no earlier check can see. `changelog: disable`
+  # makes GoReleaser ignore `--release-notes` silently, publishing working
+  # archives with an empty body while every step reports success — this
+  # repository hit exactly that. Only reading the published release catches it.
+  verify:
+    name: Check the published release has notes
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse an empty release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(gh release view "$GITHUB_REF_NAME" \
+                   --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+          if [ -z "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "error: $GITHUB_REF_NAME was published with an empty body" >&2
+            echo "hint: --release-notes is read by GoReleaser's changelog" >&2
+            echo "      pipe; check changelog.disable in .goreleaser.yaml" >&2
+            exit 1
+          fi
+          printf '%s\n' "$body" | head -5
+          echo "release body: $(printf '%s' "$body" | wc -c) bytes"

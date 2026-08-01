@@ -1,0 +1,225 @@
+package beads_test
+
+import (
+	"context"
+	"encoding/json"
+	"os/exec"
+	"path/filepath"
+	"slices"
+
+	"github.com/stretchr/testify/suite"
+
+	"github.com/Toshik1978/beads-viewer/internal/beads"
+)
+
+type deriveTestSuite struct {
+	suite.Suite
+
+	snap *beads.Snapshot
+}
+
+func (s *deriveTestSuite) SetupSuite() {
+	issues, err := beads.LoadIssues(filepath.Join("testdata", "derive.jsonl"))
+	s.Require().NoError(err)
+	s.snap = beads.NewSnapshot(issues)
+}
+
+func (s *deriveTestSuite) TestIsBlocked() {
+	cases := []struct {
+		id   string
+		want bool
+		why  string
+	}{
+		{"d-open", false, "no dependencies at all"},
+		{"d-blocked-by-open", true, "blocks dependency on a live issue"},
+		{"d-blocked-by-closed", false, "a closed blocker is satisfied"},
+		{"d-blocked-by-tomb", false, "a tombstoned blocker is satisfied"},
+		{"d-dangling", true, "a missing target blocks (br LEFT JOINs with OR i.id IS NULL)"},
+		{"d-external", false, "external: targets are excluded — br cannot know their status"},
+		{"d-template-dep", false, "a template blocker is excluded"},
+		{"d-child", false, "parent-child never blocks"},
+		{"d-related", false, "related never blocks"},
+		{"d-conditional", true, "conditional-blocks blocks"},
+		{"d-waits", true, "waits-for blocks"},
+		{"d-blocked-by-unknown", true, "an unknown status is not terminal, so it still blocks"},
+		{"d-epic-open-child", true, "an epic with an open child is blocked — br's :child-open marker"},
+		{"d-epic-all-closed", false, "an epic whose children are all closed is not blocked by them"},
+		{"d-feature-open-child", false, "the open-child rule is epic-only; a feature parent is unaffected"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.id+": "+tc.why, func() {
+			s.Equal(tc.want, s.snap.IsBlocked(tc.id))
+		})
+	}
+}
+
+func (s *deriveTestSuite) TestBlockersNamesTheLiveOnes() {
+	blockers := s.snap.Blockers("d-blocked-by-open")
+	s.Require().Len(blockers, 1)
+	s.Equal("d-open", blockers[0].ID)
+
+	s.Empty(s.snap.Blockers("d-blocked-by-closed"))
+	// A dangling target blocks but cannot be named, since it is not in the set.
+	s.Empty(s.snap.Blockers("d-dangling"))
+	s.True(s.snap.IsBlocked("d-dangling"))
+
+	// The epic open-child rule is close-ordering, not a dependency edge, so it
+	// must never surface here even though it makes IsBlocked true.
+	s.Empty(s.snap.Blockers("d-epic-open-child"))
+	s.True(s.snap.IsBlocked("d-epic-open-child"))
+}
+
+func (s *deriveTestSuite) TestIsReady() {
+	cases := []struct {
+		id   string
+		want bool
+		why  string
+	}{
+		{"d-open", true, "open and unblocked"},
+		{"d-closed", false, "not open"},
+		{"d-inprogress", false, "in_progress means already claimed"},
+		{"d-unknown-status", false, "ready is hardcoded to status open"},
+		{"d-blocked-by-open", false, "blocked"},
+		{"d-blocked-by-closed", true, "blocker is satisfied"},
+		{"d-deferred-past", true, "the defer window has elapsed"},
+		{"d-deferred-future", false, "still deferred"},
+		{"d-pinned", false, "pinned is excluded"},
+		{"d-ephemeral", false, "ephemeral is excluded"},
+		{"d-wisp-xyz", false, "ids containing -wisp- are excluded"},
+		{"d-template", false, "templates are excluded"},
+		{"d-child", true, "a parent does not block its child"},
+		{"d-epic-open-child", false, "an epic is not ready while it still has an open child"},
+		{"d-epic-open-child-kid", true, "the rule does not propagate downward: the child stays ready"},
+		{"d-epic-all-closed", true, "an epic is ready once every child is closed"},
+		{"d-feature-open-child", true, "a non-epic parent with an open child stays ready"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.id+": "+tc.why, func() {
+			s.Equal(tc.want, s.snap.IsReady(tc.id))
+		})
+	}
+}
+
+func (s *deriveTestSuite) TestCounts() {
+	counts := s.snap.Counts()
+
+	s.Equal(s.snap.Len(), counts.Total)
+	// Closed counts closed and tombstoned — both are terminal. d-closed,
+	// d-tomb and d-epic-all-closed-kid (the epic-rule fixture's closed child).
+	s.Equal(3, counts.Closed)
+	s.Positive(counts.Open)
+	s.Positive(counts.Ready)
+	s.Positive(counts.Blocked)
+	s.LessOrEqual(counts.Ready, counts.Open, "ready is a subset of open")
+}
+
+func (s *deriveTestSuite) TestUnknownIDIsNeitherBlockedNorReady() {
+	s.False(s.snap.IsBlocked("does-not-exist"))
+	s.False(s.snap.IsReady("does-not-exist"))
+	s.Empty(s.snap.Blockers("does-not-exist"))
+}
+
+// TestMatchesBrReady is the anchor test: it re-derives readiness over a real
+// workspace and compares against br itself. If this drifts, one of the two is
+// wrong and it is worth knowing which.
+//
+// The workspace is this repository's own, found by walking upward with the
+// package's own FindWorkspace — which also dogfoods Task 2.3. It is used
+// rather than a sibling checkout because a compacted workspace collapses to a
+// handful of summary records, and comparing two empty sets is a test that
+// cannot fail. Both sides read the same live state at the same moment, so the
+// comparison stays valid however the tracker's contents change.
+func (s *deriveTestSuite) TestMatchesBrReady() {
+	if _, err := exec.LookPath("br"); err != nil {
+		s.T().Skip("br not on PATH")
+	}
+	ws, err := beads.FindWorkspace("")
+	if err != nil {
+		s.T().Skip("no workspace found above the test directory")
+	}
+
+	cmd := exec.CommandContext(context.Background(), "br", "ready", "--json")
+	cmd.Dir = filepath.Dir(ws.Dir)
+	out, err := cmd.Output()
+	if err != nil {
+		s.T().Skip("br ready failed in that workspace")
+	}
+
+	var reported []struct {
+		ID string `json:"id"`
+	}
+	s.Require().NoError(json.Unmarshal(out, &reported))
+
+	want := make([]string, len(reported))
+	for i, r := range reported {
+		want[i] = r.ID
+	}
+
+	snap, err := beads.LoadSnapshot(ws)
+	s.Require().NoError(err)
+
+	var got []string
+	for _, issue := range snap.Issues() {
+		if snap.IsReady(issue.ID) {
+			got = append(got, issue.ID)
+		}
+	}
+
+	slices.Sort(want)
+	slices.Sort(got)
+	// ElementsMatch rather than Equal, for the same reason as the blocked
+	// anchor below: `want` is non-nil even when empty, `got` is nil until
+	// something is appended, and Equal treats those as different. A workspace
+	// with nothing ready is an ordinary state, not a failure.
+	s.ElementsMatch(want, got, "derivation must agree with br ready")
+}
+
+func (s *deriveTestSuite) TestMatchesBrBlocked() {
+	if _, err := exec.LookPath("br"); err != nil {
+		s.T().Skip("br not on PATH")
+	}
+	ws, err := beads.FindWorkspace("")
+	if err != nil {
+		s.T().Skip("no workspace found above the test directory")
+	}
+
+	cmd := exec.CommandContext(context.Background(), "br", "blocked", "--json")
+	cmd.Dir = filepath.Dir(ws.Dir)
+	out, err := cmd.Output()
+	if err != nil {
+		s.T().Skip("br blocked failed in that workspace")
+	}
+
+	var reported []struct {
+		ID string `json:"id"`
+	}
+	s.Require().NoError(json.Unmarshal(out, &reported))
+
+	want := make([]string, 0, len(reported))
+	for _, r := range reported {
+		want = append(want, r.ID)
+	}
+
+	snap, err := beads.LoadSnapshot(ws)
+	s.Require().NoError(err)
+
+	var got []string
+	for _, issue := range snap.Issues() {
+		// br blocked lists open work that is blocked, not every issue with an
+		// unsatisfied edge — a closed issue's stale blocker is not interesting.
+		if issue.Status == beads.StatusOpen && snap.IsBlocked(issue.ID) {
+			got = append(got, issue.ID)
+		}
+	}
+
+	slices.Sort(want)
+	slices.Sort(got)
+	// ElementsMatch rather than Equal: `want` is built with make, so it is an
+	// empty non-nil slice when br reports nothing, while `got` is only ever
+	// appended to and stays nil in that case. Equal distinguishes the two and
+	// fails on a workspace where nothing is blocked — which is the normal
+	// state of a finished project, and was the state this repository reached
+	// the moment its own last issue closed. The values agree; the assertion
+	// did not.
+	s.ElementsMatch(want, got, "derivation must agree with br blocked")
+}
