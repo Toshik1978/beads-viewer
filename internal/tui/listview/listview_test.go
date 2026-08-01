@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -131,15 +132,23 @@ func (s *listViewTestSuite) newModel(issues []beads.Issue, w, h int) *listview.M
 	return m
 }
 
+// sample's ages are fixed offsets from the moment the suite runs, not
+// wall-clock timestamps: bv-1 is always exactly 2 hours old ("2h") and bv-2
+// always exactly 30 days old ("1mo"), so the golden files this fixture feeds
+// stay stable however long ago they were regenerated.
 func (s *listViewTestSuite) sample() []beads.Issue {
+	now := time.Now()
+
 	return []beads.Issue{
 		{
 			ID: "bv-1", Title: "Add tree view", Status: beads.StatusOpen,
 			Priority: beads.PriorityHigh, IssueType: beads.TypeFeature, Labels: []string{"ui"},
+			UpdatedAt: now.Add(-2 * time.Hour),
 		},
 		{
 			ID: "bv-2", Title: "Fix decoder panic", Status: beads.StatusClosed,
 			Priority: beads.PriorityCritical, IssueType: beads.TypeBug,
+			UpdatedAt: now.Add(-30 * 24 * time.Hour),
 		},
 		{
 			//nolint:gosmopolitan // exercising CJK width, not locale text
@@ -629,4 +638,138 @@ func golden(t *testing.T, name, actual string) string {
 	}
 
 	return string(b)
+}
+
+// aged carries fixed offsets from now so the rendered ages are stable
+// whenever the test runs: -2h always renders "2h", -3 days always "3d".
+func (s *listViewTestSuite) aged() []beads.Issue {
+	now := time.Now()
+
+	return []beads.Issue{
+		{
+			ID: "bv-1", Title: "first", IssueType: beads.TypeBug,
+			Status: beads.StatusInProgress, Priority: beads.PriorityHigh,
+			UpdatedAt: now.Add(-2 * time.Hour),
+		},
+		{
+			ID: "bv-2", Title: "second", IssueType: beads.TypeEpic,
+			Status: beads.StatusOpen, Priority: beads.PriorityMedium,
+			UpdatedAt: now.Add(-3 * 24 * time.Hour),
+		},
+		{
+			ID: "bv-3", Title: "third", IssueType: beads.TypeTask,
+			Status: beads.StatusClosed, Priority: beads.PriorityLow,
+			// No UpdatedAt: a partial record must render no age at all
+			// rather than an age measured from year 1.
+		},
+		{
+			// -8000h lands in RelativeAge's "mo" bucket at 11 months: "11mo",
+			// AgeWidth's own widest case. bv-1's "2h" is 2 cells; this is 4 —
+			// deliberately a different width, since a right-alignment check
+			// that only ever compares two ages of the same width cannot
+			// distinguish right-aligned from left-aligned padding.
+			ID: "bv-4", Title: "fourth", IssueType: beads.TypeChore,
+			Status: beads.StatusDeferred, Priority: beads.PriorityBacklog,
+			UpdatedAt: now.Add(-8000 * time.Hour),
+		},
+	}
+}
+
+func (s *listViewTestSuite) TestRowsCarryARelativeAge() {
+	m := s.newModel(s.aged(), 100, 10)
+
+	out := ansi.Strip(m.View())
+
+	s.Contains(out, "2h")
+	s.Contains(out, "3d")
+}
+
+// TestAgeIsRightAlignedInItsOwnColumn compares bv-1's "2h" (2 cells) against
+// bv-4's "11mo" (4 cells) — two ages of different widths — rather than two
+// ages that happen to both be 2 cells wide. Same-width ages would still
+// align if the column were left-padded instead of right-padded, so that
+// comparison alone cannot tell right-alignment apart from left-alignment;
+// only a comparison across differing digit counts can.
+func (s *listViewTestSuite) TestAgeIsRightAlignedInItsOwnColumn() {
+	m := s.newModel(s.aged(), 100, 10)
+
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	var first, fourth string
+	for _, line := range lines {
+		switch {
+		case strings.Contains(line, "bv-1"):
+			first = strings.TrimRight(line, " ")
+		case strings.Contains(line, "bv-4"):
+			fourth = strings.TrimRight(line, " ")
+		}
+	}
+
+	s.Require().NotEmpty(first)
+	s.Require().NotEmpty(fourth)
+	s.Contains(first, "2h")
+	s.Contains(fourth, "11mo")
+	s.Equal(ansi.StringWidth(first), ansi.StringWidth(fourth),
+		"every age ends at the same cell however many digits it has")
+}
+
+func (s *listViewTestSuite) TestARecordWithNoUpdatedAtShowsNoAge() {
+	m := s.newModel(s.aged(), 100, 10)
+
+	for line := range strings.SplitSeq(ansi.Strip(m.View()), "\n") {
+		if strings.Contains(line, "bv-3") {
+			s.NotRegexp(`\d+(m|h|d|w|mo|y)\s*$`, strings.TrimRight(line, " "))
+		}
+	}
+}
+
+func (s *listViewTestSuite) TestNarrowRowsDropTheAgeBeforeTheTitle() {
+	m := s.newModel(s.aged(), 34, 10)
+
+	out := ansi.Strip(m.View())
+
+	s.Contains(out, "first", "the title outranks the age")
+	s.NotContains(out, "2h", "the age is the first column to go")
+	for line := range strings.SplitSeq(out, "\n") {
+		s.LessOrEqual(ansi.StringWidth(line), 34)
+	}
+}
+
+func (s *listViewTestSuite) TestUnselectedRowsAreColouredColumnByColumn() {
+	m := s.newModel(s.aged(), 100, 10)
+
+	// bv-2 is not selected (bv-1 is), so its type glyph and status must carry
+	// their own styles rather than one style over the whole row.
+	var row string
+	for line := range strings.SplitSeq(m.View(), "\n") {
+		if strings.Contains(ansi.Strip(line), "bv-2") {
+			row = line
+		}
+	}
+
+	s.Require().NotEmpty(row)
+	s.Greater(strings.Count(row, "\x1b["), 2,
+		"a column-by-column row emits more than one style sequence")
+}
+
+func (s *listViewTestSuite) TestSelectedRowIsStyledAsOneUnit() {
+	m := s.newModel(s.aged(), 100, 10)
+
+	var selected string
+	for line := range strings.SplitSeq(m.View(), "\n") {
+		if strings.Contains(ansi.Strip(line), "bv-1") {
+			selected = line
+		}
+	}
+
+	s.Require().NotEmpty(selected)
+	// theme.Selected sets a background; a per-column foreground inside it
+	// would reset that background partway along the row. One style in, one
+	// reset out is what proves the highlight survives the whole width.
+	//
+	// The reset code is "\x1b[m", not "\x1b[0m": lipgloss v2's Style.Render
+	// never writes the explicit "0" (see the AMENDMENT above
+	// TestGoldenRendering, which pins the same "\x1b[m" form for an identical
+	// reason).
+	s.Equal(1, strings.Count(selected, "\x1b[m"),
+		"the selection highlight must not be interrupted mid-row")
 }
