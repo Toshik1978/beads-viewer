@@ -263,10 +263,17 @@ func (s *appTestSuite) TestQDoesNotQuitWhileTheFilterBoxIsFocused() {
 
 	// The bug fixed upstream as #176: typing "q" into the filter box quit the
 	// app instead of being entered as text, because the global quit binding
-	// was checked before the in-progress filter edit.
+	// was checked before the in-progress filter edit. bv-f7b.6.1 made every
+	// typed character schedule a debounced apply (keys.go's
+	// scheduleFilterApply), so cmd is no longer nil for an ordinary
+	// character; what must still never happen is cmd carrying tea.Quit's
+	// signal.
 	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 
-	s.Nil(cmd, "q must not quit while the filter box is focused")
+	if cmd != nil {
+		_, isQuit := cmd().(tea.QuitMsg)
+		s.False(isQuit, "q must not quit while the filter box is focused")
+	}
 	s.Contains(m.View(), "filter: q", "q must be entered as text instead")
 }
 
@@ -285,16 +292,120 @@ func (s *appTestSuite) TestCtrlCQuitsWhileTheFilterBoxIsFocused() {
 	s.NotNil(cmd, "ctrl+c must quit even while the filter box is focused")
 }
 
-func (s *appTestSuite) TestEscapeClosesTheFilterBoxAndDiscardsTheEdit() {
-	m := s.newModel([]beads.Issue{{ID: "bv-1", Title: "keep me", Status: beads.StatusOpen}})
+// twoIssues is this suite's fixture for the live-filter tests below: two
+// issues whose titles need to be distinct and known so narrowing by a single
+// typed letter can be asserted precisely. "widget" rather than "beta": beads.
+// Filter.matchesText is a substring match, and "beta" itself contains "a",
+// which would leave TestTypingNarrowsTheViewsWithoutEnter unable to exclude
+// it by typing "a" no matter how correct the debounce plumbing is.
+func (s *appTestSuite) twoIssues() []beads.Issue {
+	return []beads.Issue{
+		{ID: "bv-1", Title: "alpha", Status: beads.StatusOpen},
+		{ID: "bv-2", Title: "widget", Status: beads.StatusOpen},
+	}
+}
+
+func (s *appTestSuite) TestTypingNarrowsTheViewsWithoutEnter() {
+	m := s.newModel(s.twoIssues())
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
-	m.Update(tea.KeyPressMsg{Code: '/'})
-	m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+
+	s.Require().NotNil(cmd, "a keystroke must schedule a debounced apply")
+	// Run the scheduled command for the tick it would have delivered rather
+	// than sleeping: tea.Tick's own timer is not this test's concern.
+	m.Update(cmd())
+
+	out := ansi.Strip(m.View())
+	s.Contains(out, "bv-1", "alpha matches")
+	s.NotContains(out, "bv-2", "widget does not")
+}
+
+func (s *appTestSuite) TestAStaleTickAppliesNothing() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+
+	// Type "b", hold on to its tick, then type "e" — the first tick is now a
+	// keystroke stale and must not narrow anything to "b" alone. staleMsg is
+	// built only after "e" lands: at runtime the tick fires 150ms later, by
+	// which time more characters have arrived, so calling stale() early would
+	// let a fire-time read of the token (the exact bug this test exists to
+	// catch) pass by accident.
+	_, stale := m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	s.Require().NotNil(stale)
+	_, fresh := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	s.Require().NotNil(fresh)
+	staleMsg := stale()
+
+	m.Update(staleMsg)
+	s.Empty(m.FilterForTest().Text, "a stale tick must apply nothing at all")
+
+	m.Update(fresh())
+	s.Equal("be", m.FilterForTest().Text)
+}
+
+func (s *appTestSuite) TestEnterStillCommitsAndClosesTheOverlay() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	s.Equal("a", m.FilterForTest().Text)
+	s.NotContains(ansi.Strip(m.View()), "filter: ", "the overlay is closed")
+}
+
+func (s *appTestSuite) TestEscapeRestoresTheFilterAsItWasWhenTheOverlayOpened() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Open on an already-active filter — the case a plain "clear on escape"
+	// gets wrong, and the reason this is a restore rather than a reset.
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	s.Require().Equal("a", m.FilterForTest().Text)
+
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	m.Update(cmd())
+	s.Require().Equal("ab", m.FilterForTest().Text, "typing applied live")
 
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
-	s.NotContains(m.View(), "filter:", "escape must close the box")
-	s.Contains(m.View(), "keep me", "the discarded edit must never have been applied")
+	s.Equal("a", m.FilterForTest().Text,
+		"escape restores what was there, it does not clear")
+	s.Contains(ansi.Strip(m.View()), "bv-1")
+}
+
+func (s *appTestSuite) TestATickArrivingAfterEscapeAppliesNothing() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Open on an already-active filter, so the guard actually has something
+	// to discriminate: closeFilterOverlay clears overlay.buffer to "" too, so
+	// starting from an empty filter would leave "the guard fired" and "the
+	// buffer emptied on its own" looking identical. Only a restored, non-
+	// empty filter proves the token's kind check — not just its token check,
+	// which this tick still satisfies — is what stopped it.
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	s.Require().Equal("a", m.FilterForTest().Text)
+
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	s.Require().NotNil(cmd)
+	inFlight := cmd()
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m.Update(inFlight)
+
+	s.Equal("a", m.FilterForTest().Text,
+		"a tick that outlived the overlay must not overwrite the restored filter")
 }
 
 // TestEscapeClearsANonMatchingFilterFromTheActiveView is C1's fix pinned.

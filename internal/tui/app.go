@@ -162,12 +162,12 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		}
 
 		return m, nil
+	case filterTickMsg:
+		m.applyBufferedFilter(msg.token)
+
+		return m, nil
 	case tea.BackgroundColorMsg:
-		detected := theme.BackgroundLight
-		if msg.IsDark() {
-			detected = theme.BackgroundDark
-		}
-		m.applyBackground(detected)
+		m.applyDetectedBackground(msg)
 
 		return m, nil
 	case tea.KeyPressMsg:
@@ -321,6 +321,17 @@ func (m *Model) joinPanes() string {
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, listPane, m.separator(), detailPane)
+}
+
+// applyDetectedBackground turns a raw tea.BackgroundColorMsg into the
+// theme.DetectedBackground applyBackground wants. Pulled out of Update so its
+// conditional does not count against Update's own complexity limit.
+func (m *Model) applyDetectedBackground(msg tea.BackgroundColorMsg) {
+	detected := theme.BackgroundLight
+	if msg.IsDark() {
+		detected = theme.BackgroundDark
+	}
+	m.applyBackground(detected)
 }
 
 // applySnapshot handles the result of a reload. An error leaves the previous

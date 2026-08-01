@@ -108,3 +108,8 @@ func ViewKindForTest(m *Model) config.ViewKind { return viewKindAt(m.active) }
 // name and status there rather than reading as a dangling reference. This is
 // what lets a filter test assert on the rows a filter actually governs.
 func ActivePaneForTest(m *Model) string { return m.views[m.active].View() }
+
+// FilterForTest exposes the applied filter, so a test can tell "the buffer
+// holds this text" apart from "the filter has actually been applied" — the
+// distinction the whole debounce turns on.
+func (m *Model) FilterForTest() beads.Filter { return m.filter }
