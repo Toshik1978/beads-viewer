@@ -1,5 +1,50 @@
 # Changelog
 
+## v1.2.0 — 2026-08-01
+
+Tree rows now read the way list rows have since v1.1.0, and the board's `left`
+and `right` land only where there is something to land on. No key changed in
+this release.
+
+### Tree rows
+
+- Rows carry what the list's carry: the type glyph coloured by issue type, the
+  priority by level, a status column coloured by status, and a right-aligned
+  relative age. Same colours and same widths as the list, so one issue reads
+  the same in either pane — the two panes now share a single implementation
+  rather than agreeing by convention.
+- The tree's indent grows with depth, so its columns give way in a different
+  order than the list's: the age first, then the status, then the id, and only
+  then does the title truncate. The title is the one column that identifies a
+  row, so it is the one that survives.
+- A selected row is still a single highlight, and an ancestor kept only so a
+  matching descendant stays reachable is still muted as a whole. Colouring
+  those per column would contradict what the highlight and the muting each say
+  about the row.
+
+### Board
+
+- `left` and `right` move to the nearest column holding at least one issue,
+  and stay put when there is none in that direction. They used to step one
+  column at a time and park on empty ones, which emptied the selection and
+  made the key look like it had done nothing.
+- Empty columns still render, with their header, count and stats. Skipping is
+  a navigation rule, not a visibility one: a status with nothing in it is
+  worth seeing on a board used for triage.
+- A reload or a regrouping that empties the column your cursor is already on
+  still resolves to something valid. That is a separate rule from the
+  skipping, and deliberately so — otherwise a write by `br` could strand the
+  cursor with nothing selected.
+
+### Features
+
+- feat(tree): colour rows, and give them a status and age column ([b03b0d4](https://github.com/Toshik1978/beads-viewer/commit/b03b0d4bcdbb5d4fa43cabd2f1136b3cffe3320e))
+- feat(board): skip empty columns when moving left or right ([8ebac57](https://github.com/Toshik1978/beads-viewer/commit/8ebac574aac325e9893be3229ddb47d6b13183a0))
+
+### Others
+
+- refactor(tui): extract the shared row formatter into rowfmt ([a0b053b](https://github.com/Toshik1978/beads-viewer/commit/a0b053b2c2eceedd7c04f837d98d79937893dd7c))
+- refactor(tui): give rowfmt the status column width, and name it in the architecture ([766b0ad](https://github.com/Toshik1978/beads-viewer/commit/766b0ad5e646a4d42b67c4e2716f8f0125dddc24))
 ## v1.1.0 — 2026-08-01
 
 Panes now carry a frame and a focus model, list rows carry colour and a date,
@@ -8,7 +53,9 @@ lands alongside them: `bv` was under-reporting blocked issues relative to `br`.
 
 **This release reassigns `tab`.** On the board it used to cycle the swimlane
 grouping; it now moves focus between the active view and the detail pane, and
-swimlanes move to `s`. Every changed key is listed at the end.
+swimlanes move to `s`. Every changed key is listed at the end. It stays a
+minor release — see v1.0.0 on why the version number does not move for a
+rebound key.
 
 ### Panes and focus
 
@@ -114,10 +161,20 @@ with live reload as `br` writes. It never writes anywhere inside `.beads/` and
 never spawns a subprocess; `br` remains the only thing that touches your data.
 Both invariants are asserted by tests rather than merely intended.
 
-This is 1.0 because the surface is settled, not because the project is large.
-Keybindings, flags and the config file are what a user depends on, and they
-follow semantic versioning from here: no key is reassigned and no flag removed
-in a minor release.
+This is 1.0 because the surface is settled, not because the project is large —
+and it stays on 1.x by choice. The honest alternative was 0.x, which would say
+"not finished yet" about something that is finished.
+
+Keybindings, flags and the config file are what you depend on, and they are
+what these notes track. But `bv` is a reader: it stores nothing, exposes no
+API, and nothing is built against it. A reassigned key costs you a moment's
+surprise and a glance at `?` — not a broken build, not a lockfile to unpin,
+not a migration to run. Spending a major version on that would burn the one
+signal a major version carries on something a keystroke recovers from.
+
+So a minor release here may reassign a key or retire a flag. When one does, it
+says so in its first paragraph and lists every change in a table. Being told
+before you upgrade is the guarantee that is worth anything at this size.
 
 ### Views
 
