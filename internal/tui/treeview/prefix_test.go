@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -491,6 +492,187 @@ func (s *prefixTestSuite) TestGoldenRenderingNarrowWidthTruncates() {
 	s.Contains(actual, "…", "at this width a title must actually be cut")
 	s.NotContains(actual, "t1", "at this depth and width the id column must be dropped")
 	s.Equal(golden(s.T(), "tree_24x10.golden", actual), actual)
+}
+
+// TestRowsColourEachColumnSeparately pins that an ordinary row is composed
+// from several styled segments, not rendered under one style the way a
+// selected or muted row is. The mutation this exists to catch is collapsing
+// the row back to one Render call; comparing the glyph's own styled form
+// against the row is what makes that fail, since counting escape sequences
+// alone would not.
+func (s *prefixTestSuite) TestRowsColourEachColumnSeparately() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+	m := s.newModel(s.sample(), 120, 20)
+
+	var row string
+	for line := range strings.SplitSeq(m.View(), "\n") {
+		if strings.Contains(ansi.Strip(line), "bv-2") {
+			row = line
+		}
+	}
+	s.Require().NotEmpty(row)
+
+	// rowfmt.Columns.Glyph carries its own trailing separator (rowfmt.go's own
+	// doc comment), so the styled glyph a real row emits is the glyph *and*
+	// that space wrapped together, not the bare glyph the brief's worked
+	// example — written before rowfmt.Columns landed — assumed.
+	s.Contains(row, th.Type(beads.TypeBug).Render(th.TypeGlyph(beads.TypeBug)+" "))
+}
+
+// TestRowsCarryAStatusColumnAndAnAge pins that the tree, like the list, now
+// renders a status column and a relative age.
+func (s *prefixTestSuite) TestRowsCarryAStatusColumnAndAnAge() {
+	m := s.newModel(s.agedSample(), 120, 20)
+
+	out := ansi.Strip(m.View())
+
+	s.Contains(out, "Open")
+	s.Contains(out, "2h")
+}
+
+// TestSelectedRowIsOneUnbrokenHighlight pins that the cursor row still
+// renders as a single Render call — a background style broken by a
+// per-column foreground reset would leave a visible gap running to the row's
+// right edge (rowfmt.Columns.Styled's own doc comment explains why).
+func (s *prefixTestSuite) TestSelectedRowIsOneUnbrokenHighlight() {
+	m := s.newModel(s.sample(), 120, 20)
+
+	var selected string
+	for line := range strings.SplitSeq(m.View(), "\n") {
+		if strings.Contains(ansi.Strip(line), m.SelectedID()) {
+			selected = line
+		}
+	}
+
+	s.Require().NotEmpty(selected)
+	s.Equal(1, strings.Count(selected, "\x1b[m"),
+		"the highlight must not be interrupted mid-row")
+}
+
+// TestRetainedAncestorStaysMutedAsAWhole pins the third rendering path: an
+// ancestor kept only so a matching descendant is reachable is muted as a
+// statement about the whole row, so it must not pick up per-column colour.
+//
+// filteredSample puts a live root ahead of the tombstone so the tombstone is
+// not the cursor row: without that, this test would exercise renderRow's
+// `selected` arm instead of its `!MatchesFilter` arm, and would still pass
+// with the `!MatchesFilter` branch deleted entirely — which is exactly what
+// an earlier version of this test did (caught only by the pre-existing
+// TestMatchesFilterFalseRendersMuted above). Comparing the muted row's own
+// leading style code against th.Muted's is what pins the branch directly,
+// rather than merely counting resets or diffing against an unrelated row.
+func (s *prefixTestSuite) TestRetainedAncestorStaysMutedAsAWhole() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+	m := s.newModel(s.filteredSample(), 120, 20)
+	s.Require().NotEqual("bv-1", m.SelectedID(), "the tombstone must not be the default selection")
+
+	var muted string
+	for line := range strings.SplitSeq(m.View(), "\n") {
+		if strings.Contains(ansi.Strip(line), "bv-1") {
+			muted = line
+		}
+	}
+
+	s.Require().NotEmpty(muted)
+	s.Equal(1, strings.Count(muted, "\x1b[m"), "the highlight must not be interrupted mid-row")
+	s.Equal(styleCode(th.Muted.Render("x")), styleCode(muted),
+		"a retained non-matching ancestor must render under Muted, not per-column colour")
+}
+
+// TestColumnsDropInOrderAsWidthFalls pins the ladder: age first, then
+// status, then id, and only then does the title truncate. The widths below
+// were measured, not guessed: a throwaway probe rendered agedSample's "bv-2"
+// row at every width from 60 down to 18 and recorded which columns survived.
+// The transitions landed at exactly three points — age present through 43,
+// gone at 42; status present through 38, gone at 37; id present through 26,
+// gone at 25 — and each case here sits several cells clear of its own
+// boundary on both sides, so a future off-by-one in the ladder cannot pass
+// by accident. A case sitting exactly on a boundary would test nothing.
+func (s *prefixTestSuite) TestColumnsDropInOrderAsWidthFalls() {
+	cases := []struct {
+		name    string
+		width   int
+		present []string
+		absent  []string
+	}{
+		{"wide keeps everything", 120, []string{"bv-2", "Open", "2h"}, nil},
+		{"drops the age first", 40, []string{"bv-2", "Open"}, []string{"2h"}},
+		{"then the status", 30, []string{"bv-2"}, []string{"Open", "2h"}},
+		{"then the id", 22, nil, []string{"bv-2", "Open", "2h"}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			out := ansi.Strip(s.newModel(s.agedSample(), tc.width, 20).View())
+
+			s.Contains(out, "second", "the title must outlast every other column")
+			for _, want := range tc.present {
+				s.Contains(out, want)
+			}
+			for _, gone := range tc.absent {
+				s.NotContains(out, gone)
+			}
+			for line := range strings.SplitSeq(out, "\n") {
+				s.LessOrEqual(ansi.StringWidth(line), tc.width)
+			}
+		})
+	}
+}
+
+// newModel builds a tree view sized to width x height from issues and
+// expands every node, mirroring navTestSuite's own model helper — kept local
+// rather than shared, per the golden helper's own note below that a second
+// caller alone does not yet justify promoting something into a tuitest
+// package.
+func (s *prefixTestSuite) newModel(issues []beads.Issue, width, height int) *treeview.Model {
+	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
+	m.SetSize(width, height)
+	m.SetSnapshot(beads.NewSnapshot(issues))
+	m.ExpandAll()
+
+	return m
+}
+
+// sample builds the two-issue tree the row-colouring tests above share: a
+// root epic and a bug child ("bv-2") whose type glyph, priority and status
+// each need their own colour, independent of the row's title.
+func (s *prefixTestSuite) sample() []beads.Issue {
+	epic := beads.Issue{ID: "bv-1", Title: "bv-1", Status: beads.StatusOpen, IssueType: beads.TypeEpic}
+	bug := child("bv-2", "bv-1")
+	bug.IssueType = beads.TypeBug
+
+	return []beads.Issue{epic, bug}
+}
+
+// agedSample extends sample with a fixed age on "bv-2" — two hours, so
+// RelativeAge renders "2h" regardless of when the test runs — and a title
+// long enough that narrowing the pane can be observed truncating it rather
+// than emptying it outright.
+func (s *prefixTestSuite) agedSample() []beads.Issue {
+	issues := s.sample()
+	issues[1].UpdatedAt = time.Now().Add(-2 * time.Hour)
+	issues[1].Title = "second issue with a title long enough to need truncation"
+
+	return issues
+}
+
+// filteredSample builds a tombstone ancestor ("bv-1") retained only because
+// its child "bv-2" is live. That is the one way a retained non-matching
+// ancestor actually reaches renderRow today: Model's own doc comment records
+// that every other Filter dimension is applied upstream by narrowing the
+// snapshot outright, so the tree's own zero-filter Retain call never sees a
+// non-matching survivor except a tombstone kept for a live descendant's sake.
+//
+// "bv-0" precedes the tombstone and sorts ahead of it (sortIssues' id
+// tiebreak), so it — not the tombstone — becomes the default selection. The
+// same shape as TestMatchesFilterFalseRendersMuted's "other-root" /
+// "tomb-root" fixture, and for the same reason: without a live row ahead of
+// it, the tombstone would be both the row under test and the cursor row,
+// masking whichever styling actually wins between the two.
+func (s *prefixTestSuite) filteredSample() []beads.Issue {
+	live := beads.Issue{ID: "bv-0", Title: "bv-0", Status: beads.StatusOpen}
+	tomb := beads.Issue{ID: "bv-1", Title: "bv-1", Status: beads.StatusTombstone}
+
+	return []beads.Issue{live, tomb, child("bv-2", "bv-1")}
 }
 
 // sampleHierarchy builds the three-level tree used by the golden tests:

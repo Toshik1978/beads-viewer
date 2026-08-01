@@ -1,5 +1,5 @@
-▾ # epic P0 epic
-  ├─▾ + f1 P0 feature one
-  │ ├─  - t1 P0 task a
-  │ └─  - t2 P0 task b
-  └─  + f2 P0 feature two
+▾ # epic P0 Open        epic                                
+  ├─▾ + f1 P0 Open        feature one                       
+  │ ├─  - t1 P0 Open        task a                          
+  │ └─  - t2 P0 Closed      task b                          
+  └─  + f2 P0 Open        feature two                       

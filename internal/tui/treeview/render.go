@@ -3,19 +3,28 @@ package treeview
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
+	"github.com/Toshik1978/beads-viewer/internal/tui/rowfmt"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 	"github.com/Toshik1978/beads-viewer/internal/tui/uitext"
 )
 
 // minTitleWidth is the fewest cells a truncated title is worth keeping.
-// Below it, columns drops the id column first rather than truncating the
-// title down to an unreadable sliver — that is what makes a deeply nested
-// row degrade gracefully instead of collapsing.
+// Below it, columns drops the next column in the ladder first rather than
+// truncating the title down to an unreadable sliver — that is what makes a
+// deeply nested row degrade gracefully instead of collapsing.
 const minTitleWidth = 10
+
+// statusColumnWidth is the widest label beads.Status.Display returns for a
+// status br defines: "In Progress", 11 cells. Declared here rather than
+// imported from listview: the two views' ladders differ (the tree drops
+// status before the id; the list never drops either), so importing across
+// view packages for one shared constant would buy less than it costs.
+const statusColumnWidth = 11
 
 // visibleRow pairs a node with the prefix metadata Prefix needs: the guide
 // bars inherited from its ancestors, and whether it is its own parent's last
@@ -144,8 +153,13 @@ func (m *Model) Selected() *beads.Issue {
 	return nil
 }
 
-// renderRow composes one row: the prefix, a type glyph, the id, the priority
-// and the truncated title, styled for selection or a filter mismatch.
+// renderRow composes one row: the prefix, then columns's type glyph, id,
+// priority, status, age and truncated title. Three rendering paths, not two
+// — a selected row and a retained non-matching ancestor each render under a
+// single style, since both are a statement about the whole row rather than
+// about any one column; every other row composes its columns each in their
+// own style instead (see rowfmt.Columns.Styled's own doc comment for why a
+// row under a single style cannot also be coloured per column).
 //
 // ancestors' length disagreeing with node.Depth is a bug in the walk that
 // built rows, not a case to render around — silently drawing the wrong
@@ -159,65 +173,98 @@ func (m *Model) renderRow(node *Node, ancestors []bool, isLast, selected bool, w
 	}
 
 	prefix := Prefix(ancestors, isLast, len(node.Children) > 0, node.Expanded)
-	remaining := width - ansi.StringWidth(prefix)
-	line := prefix + m.columns(node.Issue, remaining)
+	remaining := max(width-ansi.StringWidth(prefix), 0)
+	cols := m.columns(node.Issue, remaining)
 
-	style := m.theme.Base
 	switch {
 	case selected:
-		style = m.theme.Selected
+		return m.theme.Selected.Render(uitext.Truncate(prefix+cols.Plain(remaining), width))
 	case !node.MatchesFilter:
 		// Kept only so a matching descendant stays reachable, not a match
-		// itself — muted marks that distinction rather than hiding it.
-		style = m.theme.Muted
+		// itself. That is a statement about the row rather than about any one
+		// column, so it renders under a single style exactly as selection
+		// does — per-column colour here would say the opposite.
+		return m.theme.Muted.Render(uitext.Truncate(prefix+cols.Plain(remaining), width))
+	default:
+		// remaining already floors at zero, so cols.Styled never overruns its
+		// own share of the line — but a prefix alone can still exceed width at
+		// extreme depth (remaining is then already zero, so it has nowhere
+		// left to give). This final truncate is ansi-aware, the same guarantee
+		// rowfmt.Columns.Styled documents for its own internal one, so it
+		// trims the guide bars themselves rather than corrupting a styled
+		// segment's escape codes.
+		return uitext.Truncate(m.theme.Base.Render(prefix)+cols.Styled(m.theme, node.Issue, remaining), width)
 	}
-
-	// A defensive final truncate: the layout below floors every intermediate
-	// width at zero, but this is what actually guarantees no rendered line
-	// exceeds width even at extreme depth, where the prefix alone can
-	// approach or exceed the pane.
-	return style.Render(uitext.Truncate(line, width))
 }
 
-// columns fills the space after the prefix: a type glyph, id, priority and
-// the truncated title, dropping the id column first when depth has left too
-// little room for both it and a legible title.
-func (m *Model) columns(issue *beads.Issue, remaining int) string {
-	glyph := m.theme.TypeGlyph(issue.IssueType)
-	priority := issue.Priority.Label()
-	title := uitext.Sanitize(issue.Title)
-	id := uitext.Sanitize(issue.ID)
-
-	withID := fmt.Sprintf("%s %s %s ", glyph, id, priority)
-	if line, ok := fitTitle(withID, title, remaining); ok {
-		return line
+// columns fills the space after the prefix, sacrificing columns in the order
+// the tree can best afford: the age first, then the status, then the id, and
+// only then does the title truncate. The prefix grows with depth, so the
+// title — the one column that identifies the row — is what must survive.
+func (m *Model) columns(issue *beads.Issue, remaining int) rowfmt.Columns {
+	full := rowfmt.Columns{
+		Glyph:    m.theme.TypeGlyph(issue.IssueType) + " ",
+		ID:       uitext.Sanitize(issue.ID) + " ",
+		Priority: issue.Priority.Label() + " ",
+		Status:   fmt.Sprintf("%-*s ", statusColumnWidth, issue.Status.Display()),
+		Age:      age(issue),
 	}
 
-	withoutID := fmt.Sprintf("%s %s ", glyph, priority)
-	if line, ok := fitTitle(withoutID, title, remaining); ok {
-		return line
+	for _, drop := range []func(rowfmt.Columns) rowfmt.Columns{
+		func(c rowfmt.Columns) rowfmt.Columns { return c },
+		func(c rowfmt.Columns) rowfmt.Columns { c.Age = ""; return c },
+		func(c rowfmt.Columns) rowfmt.Columns { c.Age, c.Status = "", ""; return c },
+		func(c rowfmt.Columns) rowfmt.Columns { c.Age, c.Status, c.ID = "", "", ""; return c },
+	} {
+		candidate := drop(full)
+		if title, ok := fitTitle(candidate, issue, remaining); ok {
+			candidate.Title = title
+
+			return candidate
+		}
 	}
 
-	// Neither layout clears minTitleWidth: append whatever of the title still
-	// fits below that floor rather than dropping it outright. minTitleWidth
-	// gates which layout is preferred, not whether a title renders at all —
-	// a bare withoutID would leave free columns unused while the row
-	// identifies nothing. The caller's final safety pass still truncates the
-	// whole line, so even the priority label may not fully survive at this
-	// width, which is the row degrading rather than the renderer panicking.
-	return withoutID + uitext.Truncate(title, max(remaining-ansi.StringWidth(withoutID), 0))
+	// No layout clears minTitleWidth: keep the narrowest one and append
+	// whatever of the title still fits below that floor, rather than dropping
+	// it outright. minTitleWidth gates which layout is preferred, not whether
+	// a title renders at all — a row identifying nothing while free columns
+	// sit unused is worse. renderRow's own truncate (via Plain/Styled) is the
+	// backstop.
+	narrowest := rowfmt.Columns{Glyph: full.Glyph, Priority: full.Priority}
+	narrowest.Title = uitext.Truncate(
+		uitext.Sanitize(issue.Title), max(remaining-fixedWidth(narrowest), 0))
+
+	return narrowest
 }
 
-// fitTitle appends as much of title as fits after columns, reporting false
-// when even a floor-width title would not fit — the signal columns uses to
-// try the next, narrower layout.
-func fitTitle(columns, title string, remaining int) (string, bool) {
-	titleWidth := remaining - ansi.StringWidth(columns)
+// fitTitle appends as much of issue's title as fits after columns' fixed
+// fields, reporting false when even a floor-width title would not fit — the
+// signal columns uses to try the next, narrower layout.
+func fitTitle(columns rowfmt.Columns, issue *beads.Issue, remaining int) (string, bool) {
+	titleWidth := remaining - fixedWidth(columns)
 	if titleWidth < minTitleWidth {
 		return "", false
 	}
 
-	return columns + uitext.Truncate(title, titleWidth), true
+	return uitext.Truncate(uitext.Sanitize(issue.Title), titleWidth), true
+}
+
+// fixedWidth sums every column but Title — Title is what fitTitle solves for
+// once the rest of the row's width is fixed.
+func fixedWidth(c rowfmt.Columns) int {
+	return ansi.StringWidth(c.Glyph + c.ID + c.Priority + c.Status + c.Age)
+}
+
+// age renders issue's age flush right in a fixed-width column, or "" when
+// the issue carries no UpdatedAt. The " %*s" form matches listview's own
+// fitAge deliberately, so an issue's age reads the same way in both panes.
+func age(issue *beads.Issue) string {
+	relative := uitext.RelativeAge(time.Now(), issue.UpdatedAt)
+	if relative == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(" %*s", uitext.AgeWidth, relative)
 }
 
 // setExpanded sets every node's Expanded flag, recursively.
