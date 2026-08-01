@@ -94,21 +94,25 @@ bookkeeping until nothing about it was reviewable in isolation. Every limit
 below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
-- Non-test Go: at most **7,000 lines** total (raised four times: from 6,000
+- Non-test Go: at most **7,100 lines** total (raised five times: from 6,000
   to 6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
   six interface features under the border/focus/board epic; from 6,800 to
   6,900 for `bv-wkx`, the unplanned blockedness fix, at 162 lines; from 6,900
-  to 7,000 to restore headroom — see the commit history for all four decisions
-  recorded in full. The first raise is the precedent for the third: a
-  correctness fix nobody budgeted for is exactly the case this cap should
-  yield to, and the epic's own six features landed at 6,720, inside their
-  budget. The fourth is a different lesson: the third raise was landed on
-  exactly, and a cap with zero headroom stops measuring the codebase and
-  starts editing its prose — comments were compressed to fit the number
-  rather than to read better. Leave headroom, and when this cap next binds,
-  raise it rather than shortening an explanation. The structural limits below
-  are the ones that actually detect the regression this cap is a proxy for,
-  and they were satisfied with margin at each raise).
+  to 7,000 to restore headroom; from 7,000 to 7,100 for the row/tree/board
+  epic's first task, which extracts the shared row formatter into its own
+  package — a new package costs roughly 25 lines of declaration, doc comment
+  and imports beyond the 50 it receives, and the epic's tree and board work
+  adds about 50 more — see the commit history for all five decisions recorded
+  in full. The first raise is the precedent for the third: a correctness fix
+  nobody budgeted for is exactly the case this cap should yield to, and the
+  epic's own six features landed at 6,720, inside their budget. The fourth is
+  a different lesson: the third raise was landed on exactly, and a cap with
+  zero headroom stops measuring the codebase and starts editing its prose —
+  comments were compressed to fit the number rather than to read better.
+  Leave headroom, and when this cap next binds, raise it rather than
+  shortening an explanation. The structural limits below are the ones that
+  actually detect the regression this cap is a proxy for, and they were
+  satisfied with margin at each raise).
 - `cmd/bv/main.go`: at most **150 lines**.
 - No non-test source file exceeds **500 lines**. Test files are governed
   instead by one file per suite — a test file that maps to exactly one

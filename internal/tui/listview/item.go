@@ -64,8 +64,9 @@ func newDelegate(th theme.Theme, snap *beads.Snapshot) delegate {
 // bubbles/v2/list positions rows by a fixed Height and an embedded newline
 // would shift every row below it.
 //
-// The two branches are not interchangeable: see rowColumns.styled for why a
-// selected row must be styled as a single unit and every other row must not.
+// The two branches are not interchangeable: see rowfmt.Columns.Styled for why
+// a selected row must be styled as a single unit and every other row must
+// not.
 func (d delegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	it, ok := listItem.(item)
 	if !ok {
@@ -74,12 +75,12 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, listItem list.Ite
 
 	columns := d.compose(it.issue, m.Width())
 	if index == m.Index() {
-		_, _ = fmt.Fprint(w, d.theme.Selected.Render(columns.plain(m.Width())))
+		_, _ = fmt.Fprint(w, d.theme.Selected.Render(columns.Plain(m.Width())))
 
 		return
 	}
 
-	_, _ = fmt.Fprint(w, columns.styled(d.theme, it.issue, m.Width()))
+	_, _ = fmt.Fprint(w, columns.Styled(d.theme, it.issue, m.Width()))
 }
 
 // Height reports one line per row; the flat list never wraps a row.

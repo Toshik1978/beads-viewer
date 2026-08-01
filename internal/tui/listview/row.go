@@ -1,9 +1,9 @@
 package listview
 
-// This file composes one list row and renders it two ways. Composition is
-// split from styling because a selected row and an unselected one must lay
-// out identical text at identical widths but cannot share a styling strategy
-// — see rowColumns.styled.
+// This file composes one list row; rowfmt.Columns renders it two ways.
+// Composition is split from styling because a selected row and an
+// unselected one must lay out identical text at identical widths but cannot
+// share a styling strategy — see rowfmt.Columns.Styled.
 
 import (
 	"fmt"
@@ -13,40 +13,26 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
-	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
+	"github.com/Toshik1978/beads-viewer/internal/tui/rowfmt"
 	"github.com/Toshik1978/beads-viewer/internal/tui/uitext"
 )
 
-// rowColumns is one row's fields, already sanitised and truncated to their
-// final widths. Each field carries its own trailing (or leading, for age)
-// separator, so plain and styled concatenate rather than re-deriving spacing
-// and drifting apart.
-type rowColumns struct {
-	glyph    string
-	id       string
-	priority string
-	status   string
-	title    string
-	labels   string
-	age      string
-}
-
 // compose lays out issue's columns inside width cells.
-func (d delegate) compose(issue *beads.Issue, width int) rowColumns {
-	c := rowColumns{
-		glyph:    d.theme.TypeGlyph(issue.IssueType) + " ",
-		id:       fmt.Sprintf("%-*s ", d.idWidth, uitext.Sanitize(issue.ID)),
-		priority: issue.Priority.Label() + " ",
-		status:   fmt.Sprintf("%-*s ", statusColumnWidth, issue.Status.Display()),
+func (d delegate) compose(issue *beads.Issue, width int) rowfmt.Columns {
+	c := rowfmt.Columns{
+		Glyph:    d.theme.TypeGlyph(issue.IssueType) + " ",
+		ID:       fmt.Sprintf("%-*s ", d.idWidth, uitext.Sanitize(issue.ID)),
+		Priority: issue.Priority.Label() + " ",
+		Status:   fmt.Sprintf("%-*s ", statusColumnWidth, issue.Status.Display()),
 	}
 
-	remaining := width - ansi.StringWidth(c.glyph+c.id+c.priority+c.status)
+	remaining := width - ansi.StringWidth(c.Glyph+c.ID+c.Priority+c.Status)
 	if remaining <= 0 {
 		return c
 	}
 
-	c.age, remaining = d.fitAge(issue, remaining)
-	c.title, c.labels = d.fitTitleAndLabels(issue, remaining)
+	c.Age, remaining = d.fitAge(issue, remaining)
+	c.Title, c.Labels = d.fitTitleAndLabels(issue, remaining)
 
 	return c
 }
@@ -93,55 +79,4 @@ func (d delegate) fitTitleAndLabels(issue *beads.Issue, remaining int) (title, l
 	}
 
 	return uitext.Truncate(sanitized, titleWidth), "  " + joined
-}
-
-// plain concatenates the columns unstyled and pads the row out to width, with
-// the age flush right. This is what a selected row renders, under one style.
-func (c rowColumns) plain(width int) string {
-	body := c.glyph + c.id + c.priority + c.status + c.title + c.labels
-
-	return uitext.Truncate(pad(body, width-ansi.StringWidth(c.age))+c.age, width)
-}
-
-// styled renders the same columns each in its own style. Only unselected rows
-// take this path: theme.Selected sets a background, and a per-column
-// foreground inside it emits a reset that drops that background for the rest
-// of the line — a visible gap running to the row's right edge. No background
-// is involved here, so each segment's own reset is harmless.
-func (c rowColumns) styled(th theme.Theme, issue *beads.Issue, width int) string {
-	body := th.Base
-	if issue.Status.IsTerminal() {
-		body = th.Muted
-	}
-
-	line := th.Type(issue.IssueType).Render(c.glyph) +
-		body.Render(c.id) +
-		th.Priority(issue.Priority).Render(c.priority) +
-		th.Status(issue.Status).Render(c.status) +
-		body.Render(c.title) +
-		th.Muted.Render(c.labels)
-
-	plainWidth := ansi.StringWidth(c.glyph + c.id + c.priority + c.status + c.title + c.labels + c.age)
-	if gap := width - plainWidth; gap > 0 {
-		line += strings.Repeat(" ", gap)
-	}
-
-	line += th.Muted.Render(c.age)
-
-	// Safety net for an extreme narrow pane where the fixed columns alone
-	// exceed width: a no-op when line already fits, ansi-aware otherwise, so
-	// it never corrupts an already-styled segment's escape codes.
-	return uitext.Truncate(line, width)
-}
-
-// pad right-pads s with spaces up to width cells. Callers have already
-// truncated s to at most width, so this only ever adds space — ansi.
-// StringWidth, not len, since a row can carry double-width CJK glyphs a byte
-// count would overstate.
-func pad(s string, width int) string {
-	if n := width - ansi.StringWidth(s); n > 0 {
-		return s + strings.Repeat(" ", n)
-	}
-
-	return s
 }
