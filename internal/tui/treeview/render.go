@@ -3,7 +3,6 @@ package treeview
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -18,13 +17,6 @@ import (
 // truncating the title down to an unreadable sliver — that is what makes a
 // deeply nested row degrade gracefully instead of collapsing.
 const minTitleWidth = 10
-
-// statusColumnWidth is the widest label beads.Status.Display returns for a
-// status br defines: "In Progress", 11 cells. Declared here rather than
-// imported from listview: the two views' ladders differ (the tree drops
-// status before the id; the list never drops either), so importing across
-// view packages for one shared constant would buy less than it costs.
-const statusColumnWidth = 11
 
 // visibleRow pairs a node with the prefix metadata Prefix needs: the guide
 // bars inherited from its ancestors, and whether it is its own parent's last
@@ -206,8 +198,8 @@ func (m *Model) columns(issue *beads.Issue, remaining int) rowfmt.Columns {
 		Glyph:    m.theme.TypeGlyph(issue.IssueType) + " ",
 		ID:       uitext.Sanitize(issue.ID) + " ",
 		Priority: issue.Priority.Label() + " ",
-		Status:   fmt.Sprintf("%-*s ", statusColumnWidth, issue.Status.Display()),
-		Age:      age(issue),
+		Status:   fmt.Sprintf("%-*s ", rowfmt.StatusWidth, issue.Status.Display()),
+		Age:      rowfmt.FormatAge(issue),
 	}
 
 	for _, drop := range []func(rowfmt.Columns) rowfmt.Columns{
@@ -253,18 +245,6 @@ func fitTitle(columns rowfmt.Columns, issue *beads.Issue, remaining int) (string
 // once the rest of the row's width is fixed.
 func fixedWidth(c rowfmt.Columns) int {
 	return ansi.StringWidth(c.Glyph + c.ID + c.Priority + c.Status + c.Age)
-}
-
-// age renders issue's age flush right in a fixed-width column, or "" when
-// the issue carries no UpdatedAt. The " %*s" form matches listview's own
-// fitAge deliberately, so an issue's age reads the same way in both panes.
-func age(issue *beads.Issue) string {
-	relative := uitext.RelativeAge(time.Now(), issue.UpdatedAt)
-	if relative == "" {
-		return ""
-	}
-
-	return fmt.Sprintf(" %*s", uitext.AgeWidth, relative)
 }
 
 // setExpanded sets every node's Expanded flag, recursively.

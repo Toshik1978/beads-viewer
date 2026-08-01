@@ -14,7 +14,9 @@
 package rowfmt
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -22,6 +24,32 @@ import (
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 	"github.com/Toshik1978/beads-viewer/internal/tui/uitext"
 )
+
+// StatusWidth is the widest label beads.Status.Display returns for a status
+// br defines: "In Progress", 11 cells. It lives here, not in listview or
+// treeview, because nothing pinned the two views' own copies equal to each
+// other — a row must read the same in both panes, and a single constant is
+// the only way that stays true when one of them changes. A custom status
+// longer than this is never truncated or misaligned: each caller measures the
+// status column's actual rendered width after padding, so an overlong status
+// only pushes that row's later columns to the right, never out of line with
+// the row above or below it.
+const StatusWidth = 11
+
+// FormatAge renders issue's age flush right in a fixed-width column, or ""
+// when the issue carries no UpdatedAt. Both panes call this rather than
+// formatting the age themselves, so the column reads identically in each —
+// the tree uses the result outright, and the list additionally decides
+// whether it can afford to keep it, which is why the budget decision itself
+// stays with each caller instead of moving here.
+func FormatAge(issue *beads.Issue) string {
+	relative := uitext.RelativeAge(time.Now(), issue.UpdatedAt)
+	if relative == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(" %*s", uitext.AgeWidth, relative)
+}
 
 // Columns is one row's fields, already sanitised and truncated to their final
 // widths by the caller. Each field carries its own trailing separator — or

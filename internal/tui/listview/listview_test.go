@@ -738,9 +738,9 @@ func (s *listViewTestSuite) TestNarrowRowsDropTheAgeBeforeTheTitle() {
 // acceptance criterion "the type glyph and the status column each render in a
 // type- and status-specific style", so it has to be strong enough to notice
 // the feature being deleted. Its first draft was not: it counted escape
-// sequences and asked for more than two, which collapsing rowColumns.styled
-// (row.go) to a single body.Render over all six columns still satisfies —
-// one body render plus the trailing Muted.Render of the age is three. The
+// sequences and asked for more than two, which collapsing rowfmt.Columns.
+// Styled to a single body.Render over all six columns still satisfies — one
+// body render plus the trailing Muted.Render of the age is three. The
 // goldens cannot help, being ANSI-stripped by design, and
 // TestSelectedRowIsStyledAsOneUnit covers only the other branch.
 //

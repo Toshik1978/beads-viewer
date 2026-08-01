@@ -13,6 +13,7 @@ internal/config     configuration resolution (flags, env, file, defaults)
 internal/watch      debounced filesystem notification
 internal/tui        the bubbletea application: root model, key map, layout
   ├── listview, treeview, boardview   the three views, as peer packages
+  ├── rowfmt                         row composition and styling shared by list and tree
   ├── detail                          the detail pane (markdown rendering)
   ├── theme                           colour scheme resolution and styles
   └── uitext                         display-width-aware text helpers
@@ -28,6 +29,19 @@ enumerates git-tracked files and enforces the licensing invariants in
 package with a build-breaking constraint of its own — `task check` fails if
 its sweep fires — and a layering diagram that omitted it would understate
 what actually gates a commit.
+
+`internal/tui/rowfmt` holds the composition-and-styling rule shared by
+`listview` and `treeview`, the two views that render issues as fixed columns:
+a row is laid out once and rendered two ways, selected or not, because
+`theme.Selected`'s background and a per-column foreground cannot coexist (see
+`rowfmt.Columns.Styled`'s own doc comment). It deliberately does not own the
+width ladder — which column each view sacrifices first as the pane narrows —
+because that ladder differs per view; only the shared parts, such as the
+status column's width, live here. It exists to keep "views are peers, they
+don't import each other" true even where two views want the identical row
+logic: without it, `treeview` would either duplicate `listview`'s styling or
+import `listview` directly, and the rule in the next section would already be
+broken by the package that follows it in this diagram.
 
 `internal/beads` imports nothing from `charm.land` or any other UI package.
 This is not incidental: it is what makes the domain — JSONL decoding,

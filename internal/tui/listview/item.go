@@ -17,14 +17,6 @@ import (
 // it a label would itself need truncating past legibility.
 const labelsMinWidth = 12
 
-// statusColumnWidth is the widest label beads.Status.Display returns for a
-// status br defines: "In Progress", 11 cells. A custom status longer than
-// this is never truncated or misaligned — compose measures the status
-// column's actual rendered width with ansi.StringWidth after padding, so an
-// overlong status only pushes that row's title column start to the right, it
-// never shifts another row's columns out of line.
-const statusColumnWidth = 11
-
 // item adapts a *beads.Issue to bubbles/v2/list's Item interface.
 type item struct {
 	issue *beads.Issue

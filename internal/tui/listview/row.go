@@ -8,7 +8,6 @@ package listview
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -23,7 +22,7 @@ func (d delegate) compose(issue *beads.Issue, width int) rowfmt.Columns {
 		Glyph:    d.theme.TypeGlyph(issue.IssueType) + " ",
 		ID:       fmt.Sprintf("%-*s ", d.idWidth, uitext.Sanitize(issue.ID)),
 		Priority: issue.Priority.Label() + " ",
-		Status:   fmt.Sprintf("%-*s ", statusColumnWidth, issue.Status.Display()),
+		Status:   fmt.Sprintf("%-*s ", rowfmt.StatusWidth, issue.Status.Display()),
 	}
 
 	remaining := width - ansi.StringWidth(c.Glyph+c.ID+c.Priority+c.Status)
@@ -40,12 +39,15 @@ func (d delegate) compose(issue *beads.Issue, width int) rowfmt.Columns {
 // fitAge reserves the age column, or drops it when the row cannot afford one
 // — the age goes first, before labels and before the title truncates.
 //
-// time.Now() is read here rather than captured on the delegate: the row is
-// re-rendered every frame anyway, so ages stay current without a reload, and
-// RelativeAge itself is pure, so this call is the whole untested surface.
+// The formatting itself — RelativeAge against a freshly read time.Now(), then
+// right-aligned to uitext.AgeWidth — lives in rowfmt.FormatAge, shared with
+// treeview, so both panes render the same issue's age identically. What stays
+// here is specific to this view's own ladder: whether the row can afford the
+// column at all, which the tree never has to decide since it never carries
+// labels to compete with.
 func (d delegate) fitAge(issue *beads.Issue, remaining int) (age string, left int) {
-	age = uitext.RelativeAge(time.Now(), issue.UpdatedAt)
-	if age == "" {
+	formatted := rowfmt.FormatAge(issue)
+	if formatted == "" {
 		return "", remaining
 	}
 
@@ -54,9 +56,7 @@ func (d delegate) fitAge(issue *beads.Issue, remaining int) (age string, left in
 		return "", remaining
 	}
 
-	// Right-aligned inside a fixed-width column so every row's age ends at
-	// the same cell however many digits it has.
-	return fmt.Sprintf(" %*s", uitext.AgeWidth, age), remaining - cost
+	return formatted, remaining - cost
 }
 
 // fitTitleAndLabels sanitises the title and joined labels, then truncates the

@@ -240,9 +240,10 @@ func (s *prefixTestSuite) TestDeepNestingDegradesGracefully() {
 // minTitleWidth gates which layout columns prefers, not whether a title
 // renders at all. At width 17 a depth-2 row's fixed columns (id-less) leave
 // only 4 cells for the title — short of minTitleWidth (10) — so before this
-// fix columns fell all the way through to a bare "withoutID" with no title
-// whatsoever, even though those 4 cells were free and unused. Reverting the
-// fallback to plain `return withoutID` turns this red.
+// fix columns fell all the way through to a bare narrowest with no title
+// whatsoever, even though those 4 cells were free and unused. Reverting
+// columns' final fallback to return narrowest unchanged, without appending a
+// partial title, turns this red.
 func (s *prefixTestSuite) TestColumnsKeepsAPartialTitleWhenNeitherLayoutClearsTheFloor() {
 	epic := beads.Issue{ID: "epic", Title: "epic", Status: beads.StatusOpen}
 	f1 := child("f1", "epic")
