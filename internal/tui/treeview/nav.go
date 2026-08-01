@@ -264,9 +264,10 @@ func (m *Model) refreshRows() {
 // a fresh Build rather than re-filtering an already-pruned tree. The Retain
 // call stays even though its filter is now always zero: a zero filter is not
 // the identity — Retain's own doc records that it still drops tombstone-only
-// subtrees — so removing it would put deletion markers on screen. Every other
-// narrowing is the app's, applied once upstream and delivered here as a
-// narrower snapshot.
+// subtrees — so removing it would put deletion markers on screen for a caller
+// driving this package directly, as its own tests do; not inside the composed
+// app, where applyFilter (tui/app.go) has dropped them already. Every other
+// narrowing is the app's, applied upstream and delivered as a narrower snapshot.
 //
 // A fresh Build resets every node back to its depth==0 default, correct
 // exactly once: the very first build, before the user has expanded or

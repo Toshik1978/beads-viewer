@@ -130,7 +130,13 @@ func (s *layoutTestSuite) TestUnborderedLayoutsKeepTheGutter() {
 	s.False(got.Bordered)
 	// The blank gutter column is the unbordered fallback's only separation
 	// between the panes, so it must survive when the frame does not.
-	s.LessOrEqual(got.ListWidth+got.DetailWidth, 100)
+	//
+	// The assertion is on the gutter's exact width, not on the panes fitting.
+	// A LessOrEqual(..., 100) was satisfied by 42 + 58 == 100 — no gutter at
+	// all — so it pinned !Bordered a second time and left separatorWidth free
+	// to return 0.
+	s.Equal(100-1, got.ListWidth+got.DetailWidth,
+		"exactly one column stays blank between the panes")
 }
 
 func (s *layoutTestSuite) TestPaneHeightsNeverGoNegative() {

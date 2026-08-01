@@ -431,6 +431,33 @@ func (s *appTestSuite) TestEscapeClearsANonMatchingFilterFromTheActiveView() {
 	s.Contains(m.View(), "keep me", "esc must clear the filter and restore the view")
 }
 
+// TestEscapeClearsTheQueryButNotHideClosed records a decision, not a bug
+// report: esc discards the query the user typed — Text, Status and Labels —
+// and leaves every other dimension of the filter exactly as it was.
+//
+// esc used to assign beads.Filter{}, a whole-struct zero. HideClosed lives in
+// that struct, so a session started with --hide-closed or hide_closed: true
+// silently un-hid every closed issue the first time the user pressed esc to
+// drop a search, discarding a setting they had never typed. c is already
+// hide-closed's own toggle and is the only key that should move it; esc is
+// the only way to discard a query, and that is now the whole of what it does.
+// ShowTombstones is left standing for the same reason, and because nothing in
+// this MVP can turn it on to begin with.
+func (s *appTestSuite) TestEscapeClearsTheQueryButNotHideClosed() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.SetFilter(beads.Filter{
+		Text: "second", Status: beads.StatusInProgress, Labels: []string{"ui"}, HideClosed: true,
+	})
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	s.Equal(beads.Filter{HideClosed: true}, m.FilterForTest(),
+		"esc clears the query and nothing else")
+	s.NotContains(ansi.Strip(tui.ActivePaneForTest(m)), "third",
+		"the closed issue must stay hidden on screen, not only in the filter struct")
+}
+
 // TestDetailPaneRendersBesideOrBelowTheList pins that joinPanes actually
 // shows the detail pane's own content, in both the side-by-side (>=
 // splitThreshold) and stacked (below it) layouts. Nothing else in this
@@ -570,8 +597,15 @@ func (s *appTestSuite) TestSwitchingViewsReturnsFocusToTheView() {
 	s.NotEqual(focusedDetail, m.View())
 	// Switching views with focus stranded on the detail pane would leave the
 	// new view's own cursor unreachable until the user pressed Tab again.
+	//
+	// The assertion has to be that the cursor actually MOVED. A closing
+	// NotEmpty(SelectedID()) held whether or not the key arrived, because the
+	// tree already has a row-0 selection either way — so the test passed with
+	// handleViewSwitchKey mutated to leave focus on the detail pane, which is
+	// precisely the bug the paragraph above describes.
+	s.Require().Equal("bv-1", m.SelectedID(), "fixture assumption: the tree opens on its first row")
 	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	s.NotEmpty(m.SelectedID())
+	s.Equal("bv-2", m.SelectedID(), "down must reach the tree, not the detail pane it was focused on")
 }
 
 func (s *appTestSuite) TestFramedPanesDrawABorder() {
@@ -1410,12 +1444,22 @@ func (s *appTestSuite) TestEnterOnAnEmptyColumnDoesNothing() {
 
 // TestEnterOutsideTheBoardChangesNothing pins that Enter is scoped to the
 // board: pressed from the list or tree view it does nothing.
+//
+// The cursor is moved off row 0 first, and that is the whole of what makes
+// this load-bearing. Pressed from row 0, Enter with openSelectedInList's
+// board guard deleted still lands on row 0 — the board's own cursor starts
+// there too — so the frame comes back identical and the test passed with the
+// guard removed. From row 1 the two disagree, and a fall-through drags the
+// list back to bv-1.
 func (s *appTestSuite) TestEnterOutsideTheBoardChangesNothing() {
 	m := s.newModel(s.sample())
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	s.Require().Equal("bv-2", m.SelectedID(), "fixture assumption: the cursor is off the board's own row 0")
 
 	before := m.View()
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	s.Equal(before, m.View())
+	s.Equal("bv-2", m.SelectedID(), "enter outside the board must not move the list's cursor")
 }

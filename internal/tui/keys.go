@@ -43,6 +43,7 @@ type KeyMap struct {
 	ScrollDown key.Binding
 	Focus      key.Binding
 	Open       key.Binding
+	ClearQuery key.Binding
 }
 
 // DefaultKeyMap returns bv's built-in bindings. There is no user-configurable
@@ -71,6 +72,9 @@ func DefaultKeyMap() KeyMap {
 		ScrollDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "scroll detail down")),
 		Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus list / detail")),
 		Open:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open in list (board)")),
+		// "query", not "filter": it leaves hide-closed alone, c's business. A
+		// binding, not the bare msg.String() it was, so the docs can see it.
+		ClearQuery: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear the filter query")),
 	}
 }
 
@@ -224,6 +228,19 @@ func (m *Model) toggleHideClosed() {
 	m.SetFilter(filter)
 }
 
+// clearFilterQuery drops the query the user typed — Text, Status and Labels —
+// and leaves every other dimension of the shared filter standing. It is the
+// counterpart of toggleHideClosed above: one key owns one dimension, and this
+// is the only path that touches these three. Field by field rather than
+// assigning the beads.Filter{} zero it used to, which reached HideClosed as
+// well and so discarded a --hide-closed flag or hide_closed: true config
+// nobody typed; ShowTombstones is left standing for the same reason.
+func (m *Model) clearFilterQuery() {
+	filter := m.filter
+	filter.Text, filter.Status, filter.Labels = "", "", nil
+	m.SetFilter(filter)
+}
+
 // detailOnScreen reports whether the detail pane is actually rendered. The
 // nil check is the same one joinPanes, applyLayout and syncDetail all make: a
 // Model built directly rather than through NewModel (as WhiteBoxSuite's
@@ -290,11 +307,15 @@ func (m *Model) handleActionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.openSelectedInList()
 
 		return nil, true
-	case msg.String() == "esc":
-		// C1: empty.go's emptyFilter message says "press esc to clear the
-		// filter", but that screen shows only once the box is already
-		// closed, and handleFilterKey's Escape fires only while open.
-		m.SetFilter(beads.Filter{})
+	case key.Matches(msg, m.keys.ClearQuery):
+		// C1: empty.go's emptyFilter message offers esc as the way out of a
+		// filter that matches nothing, but that screen shows only once the box
+		// is closed, and handleFilterKey's Escape fires only while open. So
+		// esc needs a home here too, not just there. It clears the query and
+		// nothing else — see clearFilterQuery — which is why clearFilterHint
+		// (empty.go) names c instead on a hide-closed-only filter: this branch
+		// would leave the frame unchanged there.
+		m.clearFilterQuery()
 
 		return nil, true
 	default:

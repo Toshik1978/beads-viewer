@@ -48,6 +48,19 @@ type Counts struct {
 // propagating blockedByOpenChild would mark every child of an open epic as
 // blocked by itself, which is the reading DepType.Blocks() already rejects,
 // and which br rejects too by stripping that marker before it reaches a child.
+//
+// The three do not rest on equal evidence, and it is the third that is worth
+// distrusting. The first two were read off br's own storage layer, at the
+// query cited above. The third was not: no query there states it, so it was
+// inferred black-box, from which issues br reports as blocked across a
+// subtree. Its edge cases are therefore this project's own to get right, and
+// one of them was wrong for as long as the rule existed — a closed ancestor
+// still carrying an unsatisfied blocks edge propagated that block to every
+// live descendant beneath it, which over-reported Blocked in the status bar
+// and named a finished issue as the cause in the detail pane. blockedAncestor
+// checks the ancestor's status now, and inherit_test.go's h-shut-* fixtures
+// pin both halves of the correction: a closed ancestor hands nothing down,
+// and a closed link mid-chain does not hide a live blocked ancestor above it.
 func (s *Snapshot) IsBlocked(id string) bool {
 	issue, ok := s.byID[id]
 	if !ok {
@@ -237,6 +250,9 @@ func (s *Snapshot) blockedByDependency(issue *Issue) bool {
 // reaches down to this issue. See IsBlocked for why it is the dependency rule
 // alone that travels, and why it travels the whole chain rather than one hop.
 //
+// A terminal ancestor propagates nothing: a stale blocks edge on a finished
+// issue is history, not a live wait, and every sibling rule checks a status
+// too. The walk continues past one, so a closed link hides no ancestor above.
 // The walk carries a visited set because .beads/issues.jsonl is hand-editable
 // and bv renders rather than validates: a parent chain that closes into a
 // cycle is malformed data the viewer must still open, and an unguarded walk
@@ -252,7 +268,7 @@ func (s *Snapshot) blockedAncestor(issue *Issue) (*Issue, bool) {
 		if !ok || parent.ID == issue.ID || slices.Contains(visited, parent.ID) {
 			return nil, false
 		}
-		if s.blockedByDependency(parent) {
+		if !parent.Status.IsTerminal() && s.blockedByDependency(parent) {
 			return parent, true
 		}
 		visited = append(visited, parent.ID)

@@ -46,6 +46,60 @@ func (s *emptyTestSuite) TestEachReasonSaysSomethingDifferent() {
 		"an over-narrow filter and a failed reload are different problems")
 }
 
+// TestTheKeyNamedIsOneThatChangesSomething pins the fix for the dead end esc
+// had become on this screen. esc clears the query only — Text, Status and
+// Labels — and deliberately leaves HideClosed standing, because c is that
+// dimension's own toggle (keys.go, KeyMap.ClearQuery). Run `bv --hide-closed`
+// over a workspace whose issues are all closed and the old wording told the
+// reader to press esc, which rendered a byte-identical frame and left them
+// with no way out at all. Each case asserts the key that does nothing is
+// absent, not merely that the useful one is present: a message naming both
+// keys unconditionally would satisfy a presence-only check.
+func (s *emptyTestSuite) TestTheKeyNamedIsOneThatChangesSomething() {
+	th := theme.New(config.ThemeDark, theme.BackgroundDark)
+	cases := []struct {
+		name     string
+		filter   beads.Filter
+		contains []string
+		absent   []string
+	}{
+		{
+			name:     "hide-closed-only",
+			filter:   beads.Filter{HideClosed: true},
+			contains: []string{"hide closed", "press c"},
+			absent:   []string{"esc"},
+		},
+		{
+			name:     "query-and-hide-closed",
+			filter:   beads.Filter{Text: "zzz", HideClosed: true},
+			contains: []string{"zzz", "esc", "c to show closed"},
+		},
+		{
+			name:     "query-only",
+			filter:   beads.Filter{Text: "zzz"},
+			contains: []string{"zzz", "esc"},
+			absent:   []string{"show closed"},
+		},
+	}
+	for i := range cases {
+		tc := &cases[i]
+		s.Run(tc.name, func() {
+			// Wide enough that no case wraps: a hint naming both keys runs to
+			// 95 columns, and a wrapped one would break these substrings
+			// across a newline for a reason that has nothing to do with the
+			// wording being asserted.
+			out := ansi.Strip(tui.RenderEmptyForTest(tui.EmptyFilter, tc.filter, "", th, 120, 20))
+			for _, want := range tc.contains {
+				s.Contains(strings.ToLower(out), want, "%s must name %q", tc.name, want)
+			}
+			for _, unwanted := range tc.absent {
+				s.NotContains(strings.ToLower(out), unwanted,
+					"%s must not point at %q, which would change nothing here", tc.name, unwanted)
+			}
+		})
+	}
+}
+
 // TestLoadErrorWithNoErrTextStillSaysSomethingTrue pins emptyLoadError's
 // fallback wording for the test-seam case with no error text supplied
 // (unreachable through the composed app — body() only reaches this branch

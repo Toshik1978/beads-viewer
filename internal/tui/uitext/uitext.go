@@ -18,8 +18,10 @@ import (
 // ellipsis marks a truncated string. One cell wide, unlike "...".
 const ellipsis = "…"
 
-// AgeWidth is the widest string RelativeAge returns ("11mo"), so a caller can
-// reserve the column before knowing what will go in it.
+// AgeWidth is the width of the widest string RelativeAge returns, so a caller
+// can reserve the column before knowing what will go in it. Four is right, but
+// not because of "11mo": the "mo" arm runs to the 365-day cutover, so days
+// 360-364 render "12mo" — four cells too, and nothing wider is reachable.
 const AgeWidth = 4
 
 // Truncate shortens s to at most width terminal cells.
@@ -57,7 +59,8 @@ func Sanitize(s string) string {
 }
 
 // RelativeAge renders how long before now then was, in at most AgeWidth
-// cells: "now", "12m", "3h", "2d", "5w", "8mo", "2y".
+// cells: "now", "12m", "3h", "2d", "4w" (never "5w" — the 30-day cutover
+// bounds it), "8mo", "2y".
 //
 // now is a parameter rather than time.Now() read here, which is what makes
 // this pure and its table test deterministic — and gochecknoglobals rules out

@@ -94,10 +94,19 @@ bookkeeping until nothing about it was reviewable in isolation. Every limit
 below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
-- Non-test Go: at most **6,800 lines** total (raised twice: from 6,000 to
-  6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
-  six interface features under the border/focus/board epic — see the commit
-  history for both decisions recorded in full. The structural limits below
+- Non-test Go: at most **7,000 lines** total (raised four times: from 6,000
+  to 6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
+  six interface features under the border/focus/board epic; from 6,800 to
+  6,900 for `bv-wkx`, the unplanned blockedness fix, at 162 lines; from 6,900
+  to 7,000 to restore headroom — see the commit history for all four decisions
+  recorded in full. The first raise is the precedent for the third: a
+  correctness fix nobody budgeted for is exactly the case this cap should
+  yield to, and the epic's own six features landed at 6,720, inside their
+  budget. The fourth is a different lesson: the third raise was landed on
+  exactly, and a cap with zero headroom stops measuring the codebase and
+  starts editing its prose — comments were compressed to fit the number
+  rather than to read better. Leave headroom, and when this cap next binds,
+  raise it rather than shortening an explanation. The structural limits below
   are the ones that actually detect the regression this cap is a proxy for,
   and they were satisfied with margin at each raise).
 - `cmd/bv/main.go`: at most **150 lines**.
@@ -180,8 +189,16 @@ other than `internal/licensing` (test-support code that shells out to `git`
 and never reaches a `bv` run) imports `os/exec`. Any change that would make
 either test fail is out of scope for this project, not a bug to work around.
 
+That sentence describes what is *enforced*, which is narrower than what it
+sounds like. `go list -deps` reports a package's non-test imports only, so the
+check governs the shipped binary and nothing else: `cmd/bv/main_test.go` and
+`internal/beads/derive_test.go` both import `os/exec` to shell out to `br`,
+and both skip when `br` is absent. Neither is a violation, and neither would
+be caught if it became one — a test binary is free to spawn processes; `bv`
+is not.
+
 This is narrower than "writes nothing": `internal/tui/treeview/state.go`
-persists tree expansion, selection and hide-closed state to
+persists tree expansion and selection to
 `$XDG_STATE_HOME/bv/trees/` (falling back to `~/.local/state`) on exit. That
 path is outside `.beads/` and is not a violation of the invariant above — do
 not "fix" it by removing the write. The test suite redirects `XDG_STATE_HOME`

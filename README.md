@@ -78,7 +78,9 @@ bv [flags]
 ## Keybindings
 
 These are grouped exactly as they appear in `bv`'s own in-app help overlay
-(press `?`).
+(press `?`). A test compares the two sets of keys in both directions, so a
+binding added, removed or moved without updating these tables fails the build
+rather than shipping.
 
 **Global**
 
@@ -87,6 +89,7 @@ These are grouped exactly as they appear in `bv`'s own in-app help overlay
 | `q` / `ctrl+c` | quit |
 | `?` | toggle help |
 | `y` | yank the selected issue id to the clipboard |
+| `tab` | move focus between the list and the detail pane |
 
 **Views**
 
@@ -95,6 +98,7 @@ These are grouped exactly as they appear in `bv`'s own in-app help overlay
 | `1` | list view |
 | `2` | tree view |
 | `3` | board view |
+| `enter` | open the selected card in the list view (board) |
 
 **Filtering**
 
@@ -102,6 +106,7 @@ These are grouped exactly as they appear in `bv`'s own in-app help overlay
 |---|---|
 | `/` | edit the free-text filter |
 | `c` | toggle hide-closed |
+| `esc` | clear the filter query |
 
 **Navigation**
 
@@ -117,14 +122,18 @@ These are grouped exactly as they appear in `bv`'s own in-app help overlay
 | `p` | jump to parent (tree) |
 | `o` | expand all (tree) |
 | `O` | collapse all (tree) |
-| `tab` | cycle swimlane grouping (board: status, priority, assignee, type) |
+| `s` | cycle swimlane grouping (board: status, priority, assignee, type) |
 | `pgup` / `ctrl+u` | scroll the detail pane up |
 | `pgdown` / `ctrl+d` | scroll the detail pane down |
 | `ctrl+b` | page up (tree) |
 | `ctrl+f` | page down (tree) |
 
-While the filter box is open, every key edits the filter text; `Enter`
-applies it and `Escape` discards the edit.
+While the filter box is open, every key edits the filter text and the view
+narrows as you type, roughly a sixth of a second after you stop. `Enter`
+closes the box and keeps what you typed; `Escape` closes it and restores the
+filter to what it was when the box opened — including a filter that was
+already active before you pressed `/`. With the box closed, `esc` clears the
+typed query outright, leaving hide-closed alone.
 
 ## Configuration
 

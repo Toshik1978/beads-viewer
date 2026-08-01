@@ -48,12 +48,30 @@ func (s *inheritTestSuite) SetupSuite() {
 		// travel downward, or the child would be blocked by its own existence.
 		mkIssue("h-epic", withType(beads.TypeEpic)),
 		mkIssue("h-epic-kid", withParent("h-epic")),
+		// A closed parent still carrying an unsatisfied edge of its own. It is
+		// finished, so it waits on nothing and hands nothing down; h-shut-leaf
+		// is the same shape one level deeper, where the closed link sits
+		// between a live blocked ancestor and a live descendant.
+		mkIssue("h-shut-root", withStatus(beads.StatusClosed), withBlocks("h-gate")),
+		mkIssue("h-shut-kid", withParent("h-shut-root")),
+		mkIssue("h-shut-mid", withStatus(beads.StatusClosed), withParent("h-root")),
+		mkIssue("h-shut-leaf", withParent("h-shut-mid")),
 		// A parent cycle, which only a hand-edited issues.jsonl produces. Walking
 		// it must terminate; h-cyc-dep drags h-cyc-free in through the cycle.
 		mkIssue("h-cyc-a", withParent("h-cyc-b")),
 		mkIssue("h-cyc-b", withParent("h-cyc-a")),
 		mkIssue("h-cyc-free", withParent("h-cyc-dep")),
 		mkIssue("h-cyc-dep", withParent("h-cyc-free"), withBlocks("h-gate")),
+		// A three-deep cycle entered from outside it. Every cycle above closes
+		// back onto the issue the walk started from, so blockedAncestor's
+		// parent.ID == issue.ID check alone catches them and its visited set is
+		// never consulted. The walk from h-tri-tail never revisits h-tri-tail,
+		// so only the visited set ends it: delete that guard and this fixture
+		// spins until the test binary's timeout kills it.
+		mkIssue("h-tri-a", withParent("h-tri-b")),
+		mkIssue("h-tri-b", withParent("h-tri-c")),
+		mkIssue("h-tri-c", withParent("h-tri-a")),
+		mkIssue("h-tri-tail", withParent("h-tri-a")),
 		// An issue that declares itself its own parent.
 		mkIssue("h-self", withParent("h-self")),
 	})
@@ -73,10 +91,14 @@ func (s *inheritTestSuite) TestIsBlocked() {
 		{"h-clear-kid", false, "an unblocked parent passes nothing down"},
 		{"h-epic", true, "an epic with an open child is blocked"},
 		{"h-epic-kid", false, "the open-child rule does not travel downward"},
+		{"h-shut-kid", false, "a closed ancestor is finished, so its stale edge reaches nobody"},
+		{"h-shut-leaf", true, "a closed link in the chain does not hide the live ancestor above it"},
 		{"h-cyc-a", false, "a parent cycle with no blocking edge blocks nobody"},
 		{"h-cyc-b", false, "and the walk terminates from either end"},
 		{"h-cyc-dep", true, "blocked by its own edge, cycle or not"},
 		{"h-cyc-free", true, "inherits from the blocked issue in its cycle"},
+		{"h-tri-a", false, "a three-deep cycle terminates from on it"},
+		{"h-tri-tail", false, "and from outside it, where only the visited set can end the walk"},
 		{"h-self", false, "an issue is not its own blocked ancestor"},
 	}
 	for _, tc := range cases {
@@ -116,6 +138,12 @@ func (s *inheritTestSuite) TestBlockedAncestorNamesTheHolderOfTheEdge() {
 	s.False(ok)
 	_, ok = s.snap.BlockedAncestor("h-epic-kid")
 	s.False(ok, "the open-child rule is not inherited, so it names no ancestor")
+	_, ok = s.snap.BlockedAncestor("h-shut-kid")
+	s.False(ok, "naming a closed parent as the cause reads as a bug in bv, not as data")
+
+	ancestor, ok = s.snap.BlockedAncestor("h-shut-leaf")
+	s.Require().True(ok)
+	s.Equal("h-root", ancestor.ID, "the walk passes through the closed link to the live holder")
 	_, ok = s.snap.BlockedAncestor("does-not-exist")
 	s.False(ok)
 }

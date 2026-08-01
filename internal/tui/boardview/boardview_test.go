@@ -509,7 +509,7 @@ func boardKeyMsg(key string) tea.KeyPressMsg {
 		"up": {Code: tea.KeyUp}, "down": {Code: tea.KeyDown},
 		"left": {Code: tea.KeyLeft}, "right": {Code: tea.KeyRight},
 		"home": {Code: tea.KeyHome}, "end": {Code: tea.KeyEnd},
-		"tab": {Code: tea.KeyTab}, "space": {Code: tea.KeySpace},
+		"space": {Code: tea.KeySpace},
 	}
 	if msg, ok := named[key]; ok {
 		return msg

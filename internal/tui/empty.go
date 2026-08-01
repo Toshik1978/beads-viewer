@@ -96,7 +96,7 @@ func emptyMessage(reason emptyReason, f beads.Filter, errText string) string {
 			desc = "the current filter"
 		}
 
-		return fmt.Sprintf("No issues match %s. Press esc to clear the filter.", desc)
+		return fmt.Sprintf("No issues match %s. %s", desc, clearFilterHint(f))
 	case emptyLoadError:
 		if errText == "" {
 			return nothingLoadedHint
@@ -109,4 +109,33 @@ func emptyMessage(reason emptyReason, f beads.Filter, errText string) string {
 	// it); this only guards a value outside that closed set, mirroring
 	// activeIndex's own fallback in app.go.
 	return createHint
+}
+
+// clearFilterHint names a key that will actually change what is on screen.
+//
+// esc (KeyMap.ClearQuery) clears the query alone — Text, Status and Labels —
+// and leaves HideClosed standing on purpose, because c is that dimension's
+// own toggle and esc used to discard a --hide-closed nobody typed. So esc is
+// the wrong key to name here whenever the query is empty: run bv --hide-closed
+// over a workspace whose issues are all closed and the reader was told to
+// press a key that redrew a byte-identical frame, with no way out offered at
+// all. Both keys are named when both dimensions are active, since either one
+// alone leaves the pane empty and the reader cannot tell which is to blame.
+//
+// The default branch also catches a filter with neither dimension set, which
+// body() (app.go) does reach: a snapshot holding nothing but tombstones is
+// emptied by the ShowTombstones default alone. esc will not help there
+// either, but no key, flag or config reaches ShowTombstones in this MVP, so
+// there is nothing truer to name and the older wording stands.
+func clearFilterHint(f beads.Filter) string {
+	hasQuery := strings.TrimSpace(f.Text) != "" || f.Status != "" || len(f.Labels) > 0
+
+	switch {
+	case hasQuery && f.HideClosed:
+		return "Press esc to clear the query, or c to show closed issues."
+	case f.HideClosed:
+		return "Press c to show closed issues."
+	default:
+		return "Press esc to clear the filter."
+	}
 }

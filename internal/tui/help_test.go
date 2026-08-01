@@ -1,7 +1,10 @@
 package tui_test
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -127,6 +130,79 @@ func (s *helpTestSuite) TestDocumentsTreeAndBoardKeys() {
 	for _, k := range boardview.HelpKeys() {
 		s.True(keyIsDocumented(out, k), "boardview key %q is bound but undocumented", k)
 	}
+}
+
+// TestReadmeDocumentsExactlyTheBoundKeys is F2's drift guard. README.md's
+// Keybindings section claims to be grouped "exactly as they appear" in the
+// overlay, and nothing checked that until now: four rows had drifted — tab
+// still documented as the swimlane key it stopped being, tab and enter absent
+// from the tables they had moved to, and esc bound but named nowhere. The
+// overlay is guarded against KeyMap by TestDocumentsEveryBoundKey above; this
+// closes the same loop for the prose that claims to mirror it.
+//
+// It compares the two sets in both directions on purpose. A one-way "every
+// bound key appears in README.md" check would have caught the three missing
+// rows but not the stale tab row, since tab is still bound — just not to the
+// action the README gave it.
+//
+// It compares keys, not descriptions: a wording difference between a table
+// cell and a Binding.Help().Desc is editorial, and a test that failed on it
+// would be reverted rather than obeyed.
+func (s *helpTestSuite) TestReadmeDocumentsExactlyTheBoundKeys() {
+	documented := s.readmeKeybindings()
+
+	bound := map[string]bool{}
+	for _, binding := range tui.DefaultKeyMap().All() {
+		for _, k := range binding.Keys() {
+			bound[k] = true
+		}
+	}
+	for _, k := range slices.Concat(treeview.HelpKeys(), boardview.HelpKeys()) {
+		bound[k] = true
+	}
+
+	for k := range bound {
+		s.Contains(documented, k, "%q is bound but missing from README.md's key tables", k)
+	}
+	for k := range documented {
+		s.Contains(bound, k, "README.md documents %q, which nothing binds", k)
+	}
+}
+
+// readmeKeybindings collects every key named in the first column of a table
+// row inside README.md's Keybindings section.
+//
+// It reads the published file rather than an embedded copy, so what is
+// checked is what a reader actually sees. The section is bounded by its own
+// "## " headings so that prose elsewhere in the file cannot satisfy the
+// comparison by accident, and only backticked spans of a row's first cell
+// count — which is what keeps "`bv`" in the section's own opening sentence,
+// and every description cell, out of the set.
+func (s *helpTestSuite) readmeKeybindings() map[string]bool {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	s.Require().NoError(err)
+
+	keys := map[string]bool{}
+	code := regexp.MustCompile("`([^`]+)`")
+
+	inSection := false
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if strings.HasPrefix(line, "## ") {
+			inSection = line == "## Keybindings"
+
+			continue
+		}
+		cells := strings.Split(line, "|")
+		if !inSection || !strings.HasPrefix(line, "|") || len(cells) < 3 {
+			continue
+		}
+		for _, match := range code.FindAllStringSubmatch(cells[1], -1) {
+			keys[match[1]] = true
+		}
+	}
+	s.Require().NotEmpty(keys, "README.md's Keybindings section must still be findable")
+
+	return keys
 }
 
 // keyIsDocumented reports whether k appears in out (already ANSI-stripped —

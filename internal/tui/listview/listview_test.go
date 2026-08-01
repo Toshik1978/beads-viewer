@@ -734,21 +734,95 @@ func (s *listViewTestSuite) TestNarrowRowsDropTheAgeBeforeTheTitle() {
 	}
 }
 
+// TestUnselectedRowsAreColouredColumnByColumn is the only enforcement of the
+// acceptance criterion "the type glyph and the status column each render in a
+// type- and status-specific style", so it has to be strong enough to notice
+// the feature being deleted. Its first draft was not: it counted escape
+// sequences and asked for more than two, which collapsing rowColumns.styled
+// (row.go) to a single body.Render over all six columns still satisfies —
+// one body render plus the trailing Muted.Render of the age is three. The
+// goldens cannot help, being ANSI-stripped by design, and
+// TestSelectedRowIsStyledAsOneUnit covers only the other branch.
+//
+// So this reads the actual sequence each column opens with and asserts two
+// things the collapse cannot fake: within a row the glyph and status carry a
+// sequence the row's own body does not, and across rows those sequences track
+// the issue's type and status rather than the row. Verified by performing the
+// collapse: both halves fail.
+//
+// bv-1 is skipped — it is the selected row, which is deliberately styled as
+// one unit; every other row in aged() is a distinct type and status.
 func (s *listViewTestSuite) TestUnselectedRowsAreColouredColumnByColumn() {
 	m := s.newModel(s.aged(), 100, 10)
+	rows := s.rowsByID(m.View(), "bv-2", "bv-3", "bv-4")
 
-	// bv-2 is not selected (bv-1 is), so its type glyph and status must carry
-	// their own styles rather than one style over the whole row.
-	var row string
-	for line := range strings.SplitSeq(m.View(), "\n") {
-		if strings.Contains(ansi.Strip(line), "bv-2") {
-			row = line
-		}
+	cases := []struct{ id, glyph, status string }{
+		{"bv-2", "# ", "Open"},     // epic, open — the body is Base
+		{"bv-3", "- ", "Closed"},   // task, closed — the body is Muted
+		{"bv-4", "~ ", "Deferred"}, // chore, deferred — the body is Base again
 	}
 
-	s.Require().NotEmpty(row)
-	s.Greater(strings.Count(row, "\x1b["), 2,
-		"a column-by-column row emits more than one style sequence")
+	glyphs, statuses := map[string]string{}, map[string]string{}
+	for _, tc := range cases {
+		s.Run(tc.id, func() {
+			row := rows[tc.id]
+			// The id column is rendered with the row's body style, so it is
+			// what "the same style as the rest of the row" means here.
+			body := s.columnStyle(row, tc.id)
+			glyphs[tc.id] = s.columnStyle(row, tc.glyph)
+			statuses[tc.id] = s.columnStyle(row, tc.status)
+
+			s.NotEqual(body, glyphs[tc.id],
+				"the type glyph must carry a type-specific style, not the row's body style")
+		})
+	}
+
+	s.NotEqual(glyphs["bv-2"], glyphs["bv-3"], "an epic and a task must not share a glyph style")
+	s.NotEqual(glyphs["bv-3"], glyphs["bv-4"], "a task and a chore must not share a glyph style")
+	s.NotEqual(glyphs["bv-2"], glyphs["bv-4"], "an epic and a chore must not share a glyph style")
+
+	s.NotEqual(statuses["bv-2"], statuses["bv-3"], "open and closed must not share a status style")
+	s.NotEqual(s.columnStyle(rows["bv-4"], "bv-4"), statuses["bv-4"],
+		"the status column must carry a status-specific style, not the row's body style")
+}
+
+// rowsByID picks the rendered line for each id out of a frame, keeping the
+// escape sequences the caller is there to inspect.
+func (s *listViewTestSuite) rowsByID(frame string, ids ...string) map[string]string {
+	rows := make(map[string]string, len(ids))
+	for line := range strings.SplitSeq(frame, "\n") {
+		for _, id := range ids {
+			if strings.Contains(ansi.Strip(line), id) {
+				rows[id] = line
+			}
+		}
+	}
+	s.Require().Len(rows, len(ids), "fixture assumption: every id renders on its own row")
+
+	return rows
+}
+
+// columnStyle returns the SGR sequence in effect over the span of row that
+// contains text. lipgloss renders each styled segment as one sequence, its
+// text, then a reset, so the sequence opening the span text falls in is that
+// column's own style — and a row styled as one unit yields the same answer
+// for every column in it, which is exactly what the caller asserts against.
+func (s *listViewTestSuite) columnStyle(row, text string) string {
+	sgr := regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+	spans := sgr.FindAllStringIndex(row, -1)
+	for i, span := range spans {
+		end := len(row)
+		if i+1 < len(spans) {
+			end = spans[i+1][0]
+		}
+		if strings.Contains(row[span[1]:end], text) {
+			return row[span[0]:span[1]]
+		}
+	}
+	s.Require().Fail("no styled span of the row contains " + text)
+
+	return ""
 }
 
 func (s *listViewTestSuite) TestSelectedRowIsStyledAsOneUnit() {
