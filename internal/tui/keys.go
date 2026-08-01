@@ -32,6 +32,7 @@ type KeyMap struct {
 	Yank       key.Binding
 	ScrollUp   key.Binding
 	ScrollDown key.Binding
+	Focus      key.Binding
 }
 
 // DefaultKeyMap returns bv's built-in bindings. There is no user-configurable
@@ -55,6 +56,7 @@ func DefaultKeyMap() KeyMap {
 		// description actually scrollable without also paging the list.
 		ScrollUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", "scroll detail up")),
 		ScrollDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "scroll detail down")),
+		Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus list / detail")),
 	}
 }
 
@@ -75,6 +77,18 @@ const (
 	overlayFilter
 )
 
+// focusTarget names which pane receives navigation keys. The detail pane can
+// only be focused while it is actually on screen — see Model.detailOnScreen —
+// so the zero value focusView is always valid, including before the first
+// WindowSizeMsg arrives.
+type focusTarget int
+
+// The two panes that can hold focus.
+const (
+	focusView focusTarget = iota
+	focusDetail
+)
+
 // overlayState is the modal editing state that must swallow keys before the
 // active view or the global bindings see them. background and themePref
 // round it out rather than adding fields to the capped Model (its own doc
@@ -87,6 +101,10 @@ type overlayState struct {
 	buffer     string
 	background theme.DetectedBackground
 	themePref  config.ThemePreference
+	// focus is which pane navigation keys reach. It rides here rather than on
+	// Model for the reason overlayState's doc comment already gives: Model is
+	// at its 12-field cap and this struct is one of the two sanctioned to grow.
+	focus focusTarget
 }
 
 // handleKey implements the routing order app.go's Update documents: an open
@@ -140,34 +158,83 @@ func (m *Model) overlayLine() string {
 }
 
 // handleGlobalKey applies the keys that are meaningful regardless of which
-// view is active — quit, view switching, help and filter — and reports
-// whether it consumed the key press. app.go only falls through to the active
-// view when this returns false.
+// view is active and reports whether it consumed the key press. app.go only
+// falls through to the active view when this returns false. It is split in
+// two purely to stay inside the complexity limit; the routing order is
+// unchanged.
 func (m *Model) handleGlobalKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if m.handleViewSwitchKey(msg) {
+		return nil, true
+	}
+
+	return m.handleActionKey(msg)
+}
+
+// toggleFocus moves focus between the active view and the detail pane. It is
+// a no-op when there is no detail pane on screen: focusing something the user
+// cannot see would silently swallow every navigation key.
+func (m *Model) toggleFocus() {
+	if !m.detailOnScreen() {
+		return
+	}
+
+	if m.overlay.focus == focusView {
+		m.overlay.focus = focusDetail
+
+		return
+	}
+
+	m.overlay.focus = focusView
+}
+
+// detailOnScreen reports whether the detail pane is actually rendered. The
+// nil check is the same one joinPanes, applyLayout and syncDetail all make: a
+// Model built directly rather than through NewModel (as WhiteBoxSuite's
+// spy-based tests do) has no detail pane, and DetailWidth alone does not rule
+// that out. After the board goes full screen, DetailWidth is what makes this
+// false on the board.
+func (m *Model) detailOnScreen() bool {
+	return m.detail != nil && m.layout.DetailWidth > 0
+}
+
+// handleViewSwitchKey applies the three view-selection keys and reports
+// whether it consumed the press. Switching views returns focus to the view:
+// leaving it on the detail pane would strand the new view's cursor until the
+// user pressed Tab again. It never produces a tea.Cmd, unlike handleActionKey
+// beside it, so it reports only the bool handleGlobalKey needs.
+func (m *Model) handleViewSwitchKey(msg tea.KeyPressMsg) bool {
+	switch {
+	case key.Matches(msg, m.keys.ViewList):
+		m.active, m.overlay.focus = 0, focusView
+	case key.Matches(msg, m.keys.ViewTree):
+		m.active, m.overlay.focus = 1, focusView
+	case key.Matches(msg, m.keys.ViewBoard):
+		m.active, m.overlay.focus = 2, focusView
+	default:
+		return false
+	}
+
+	return true
+}
+
+// handleActionKey applies the global keys that are not view selection.
+func (m *Model) handleActionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return tea.Quit, true
-	case key.Matches(msg, m.keys.ViewList):
-		m.active = 0
-
-		return nil, true
-	case key.Matches(msg, m.keys.ViewTree):
-		m.active = 1
-
-		return nil, true
-	case key.Matches(msg, m.keys.ViewBoard):
-		m.active = 2
-
-		return nil, true
 	case key.Matches(msg, m.keys.Help):
 		// See handleKey's overlayHelp case: only kind changes here, so
-		// background and themePref survive opening the overlay.
+		// background, themePref and focus survive opening the overlay.
 		m.overlay.kind = overlayHelp
 
 		return nil, true
 	case key.Matches(msg, m.keys.Filter):
 		m.overlay.kind, m.overlay.buffer = overlayFilter, m.filter.Text
 		m.applyLayout(m.layout.Width, m.layout.Height)
+
+		return nil, true
+	case key.Matches(msg, m.keys.Focus):
+		m.toggleFocus()
 
 		return nil, true
 	case key.Matches(msg, m.keys.Yank):

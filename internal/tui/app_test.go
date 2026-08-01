@@ -421,6 +421,35 @@ func (s *appTestSuite) TestJoinedFrameNeverExceedsTheTerminalHeightWithFilterOpe
 	}
 }
 
+func (s *appTestSuite) TestTabMovesFocusAndTheFrameShowsIt() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	before := m.View()
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	after := m.View()
+
+	s.NotEqual(before, after,
+		"the frame colour is the only signal that focus moved")
+	s.Equal(ansi.Strip(before), ansi.Strip(after),
+		"focus changes styling only — no content moves")
+}
+
+func (s *appTestSuite) TestSwitchingViewsReturnsFocusToTheView() {
+	m := s.newModel(s.sample())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // focus the detail pane
+
+	focusedDetail := m.View()
+	m.Update(tea.KeyPressMsg{Code: '2', Text: "2"}) // switch to the tree
+
+	s.NotEqual(focusedDetail, m.View())
+	// Switching views with focus stranded on the detail pane would leave the
+	// new view's own cursor unreachable until the user pressed Tab again.
+	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	s.NotEmpty(m.SelectedID())
+}
+
 func (s *appTestSuite) TestFramedPanesDrawABorder() {
 	m := s.newModel(s.sample())
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -663,16 +692,22 @@ func (s *appTestSuite) TestBoardViewWiringRendersABoardSpecificArtefact() {
 // Lane already forced to "", which cannot catch a dropped
 // `|| m.active != boardSlot` guard inside boardLaneName itself — only a
 // Model actually switched to the board, then away from it, can.
+//
+// This checks for the default lane's own name ("Status") rather than
+// cycling to "Priority" first: Tab is the global focus key as of this task
+// (bv-f7b.2.1), so it no longer reaches the board's own CycleSwimLane —
+// bv-f7b.2.3 is what moves that binding to "s". LaneStatus.Name() is never
+// empty, so this still distinguishes "the indicator rendered" from "it
+// didn't" without depending on a key the board no longer sees.
 func (s *appTestSuite) TestBoardLaneOnlyShowsOnTheBoard() {
 	m := s.newModel([]beads.Issue{{ID: "bv-1", Title: "One", Status: beads.StatusOpen}})
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	m.Update(tea.KeyPressMsg{Code: '3'}) // switch to board
-	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	s.Contains(m.View(), "Priority", "the swimlane indicator must show while the board is active")
+	s.Contains(m.View(), "Status", "the swimlane indicator must show while the board is active")
 
 	m.Update(tea.KeyPressMsg{Code: '1'}) // switch to list
-	s.NotContains(m.View(), "Priority", "and disappear once another view is active")
+	s.NotContains(m.View(), "Status", "and disappear once another view is active")
 }
 
 // TestTreeHiddenCountOnlyShowsOnTheTree is I2's fix pinned, the tree's own

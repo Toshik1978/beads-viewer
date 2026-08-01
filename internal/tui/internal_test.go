@@ -152,6 +152,22 @@ func (s *WhiteBoxSuite) TestPgDownDoesNotPanicWithoutADetailPane() {
 	})
 }
 
+// TestTabIsANoOpWithNoDetailPaneOnScreen pins toggleFocus's detailOnScreen
+// guard. A Model built by hand rather than through NewModel has a nil detail
+// pane — the same construction TestPgDownDoesNotPanicWithoutADetailPane uses,
+// and the only way to reach this state, since Compute gives even a 1-column
+// terminal a stacked detail pane of the full width.
+func (s *WhiteBoxSuite) TestTabIsANoOpWithNoDetailPaneOnScreen() {
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	m := &Model{keys: DefaultKeyMap(), views: spies, active: 0}
+
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	s.Equal(focusView, m.overlay.focus,
+		"with nothing to focus, Tab must leave focus where it was")
+}
+
 // TestResizeGivesTheDetailPaneItsOwnWidth pins that resize hands the detail
 // pane layout.DetailWidth specifically, not some other value such as
 // ListWidth by copy-paste accident.

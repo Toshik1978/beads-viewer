@@ -310,12 +310,12 @@ func (m *Model) body() string {
 // (DetailWidth of 0, or a nil detail in a test that builds Model directly).
 func (m *Model) joinPanes() string {
 	listHeight, detailHeight := m.layout.paneHeights()
-	listPane := m.frame(m.views[m.active].View(), m.layout.ListWidth, listHeight, false)
+	listPane := m.frame(m.views[m.active].View(), m.layout.ListWidth, listHeight, m.overlay.focus == focusView)
 	if m.detail == nil || m.layout.DetailWidth <= 0 {
 		return listPane
 	}
 
-	detailPane := m.frame(m.detail.View(), m.layout.DetailWidth, detailHeight, false)
+	detailPane := m.frame(m.detail.View(), m.layout.DetailWidth, detailHeight, m.overlay.focus == focusDetail)
 	if m.layout.Stacked {
 		return lipgloss.JoinVertical(lipgloss.Left, listPane, detailPane)
 	}
