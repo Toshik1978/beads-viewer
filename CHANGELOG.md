@@ -1,5 +1,14 @@
 # Changelog
 
+What changed in each `bv` release and why. Highlights are written by hand; the
+commit lists under them are generated with [git-cliff](https://git-cliff.org)
+via `task changelog TAG=vX.Y.Z`.
+
+Versions follow [semver](https://semver.org). Commits follow
+[Conventional Commits](https://www.conventionalcommits.org).
+
+---
+
 ## v1.2.0 — 2026-08-01
 
 Tree rows now read the way list rows have since v1.1.0, and the board's `left`
@@ -45,6 +54,9 @@ this release.
 
 - refactor(tui): extract the shared row formatter into rowfmt ([a0b053b](https://github.com/Toshik1978/beads-viewer/commit/a0b053b2c2eceedd7c04f837d98d79937893dd7c))
 - refactor(tui): give rowfmt the status column width, and name it in the architecture ([766b0ad](https://github.com/Toshik1978/beads-viewer/commit/766b0ad5e646a4d42b67c4e2716f8f0125dddc24))
+
+---
+
 ## v1.1.0 — 2026-08-01
 
 Panes now carry a frame and a focus model, list rows carry colour and a date,
@@ -151,6 +163,9 @@ issues in two panes you never set it on.
 ### Others
 
 - docs: correct the claim that this repository has no remote ([e57c5bc](https://github.com/Toshik1978/beads-viewer/commit/e57c5bce35bca020eac213c22befc61001e31a6f))
+
+---
+
 ## v1.0.0 — 2026-08-01
 
 The first release: a read-only terminal browser for a `.beads` workspace.
@@ -217,3 +232,5 @@ gives the measurements and the reasoning.
 Prebuilt archives for Linux and macOS on x86-64 and arm64. The Linux builds
 are static — `CGO_ENABLED=0` and no cgo dependencies — so one binary runs on
 any distribution, Alpine included. There is no Windows build.
+
+---
