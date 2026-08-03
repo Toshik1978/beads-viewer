@@ -87,10 +87,26 @@ func (s *depsTestSuite) TestFocusedColumnHoldsExactlyTheFocusedIssue() {
 	s.Equal(depsview.RelationFocus, cols[1].Entries[0].Relation)
 }
 
-func (s *depsTestSuite) TestFocusedColumnIsEmptyForAnUnknownID() {
+func (s *depsTestSuite) TestFocusedColumnIsEmptyForAnEmptyID() {
 	snap := beads.NewSnapshot([]beads.Issue{mkIssue("a")})
 
-	s.Empty(depsview.Columns(snap, "gone")[1].Entries)
+	s.Empty(depsview.Columns(snap, "")[1].Entries, "an empty id has no subject to name")
+}
+
+// TestFocusedColumnNamesTheSubjectEvenWhenItHasLeftTheSnapshot pins the fix
+// for a focus that leaves the snapshot: focusEntries used to return nothing,
+// so a filtered-out or reloaded-away focus left "focused (0)" beside a
+// populated "blocks" or "related" column with nothing on screen naming what
+// those columns were about. It now renders the same way a dangling blocker
+// does — a bare tagged id, with no *beads.Issue behind it.
+func (s *depsTestSuite) TestFocusedColumnNamesTheSubjectEvenWhenItHasLeftTheSnapshot() {
+	snap := beads.NewSnapshot([]beads.Issue{mkIssue("a")})
+
+	entries := depsview.Columns(snap, "gone")[1].Entries
+	s.Require().Len(entries, 1)
+	s.Equal("gone", entries[0].ID)
+	s.Nil(entries[0].Issue, "the view is about an id this snapshot no longer has an issue for")
+	s.Equal(depsview.RelationNotInView, entries[0].Relation)
 }
 
 func (s *depsTestSuite) TestBlockedByCarriesAllFourReasons() {
@@ -128,6 +144,50 @@ func (s *depsTestSuite) TestDanglingBlockerHasAnIDButNoIssue() {
 	s.Equal("gone", entries[0].ID)
 	s.Nil(entries[0].Issue, "an id is all there is to say about a blocker that is not here")
 	s.Equal(depsview.RelationDangling, entries[0].Relation)
+}
+
+// TestBlockedByCollapsesAnExactDuplicateButNotATwoRelationCase pins Minor 5.
+// Snapshot.Blockers is not deduped at the source the way Snapshot.dependents
+// is (see snapshot.go), so a "blocks" edge and a "waits-for" edge to the same
+// target both resolve to RelationBlocker here and produced two identical
+// cards. The other half of the fixture proves the fix does not overreach:
+// "parent" is both a direct blocker (RelationBlocker) and the inherited
+// ancestor (RelationInherited) — two genuine facts under two different
+// relations — and must still appear twice.
+func (s *depsTestSuite) TestBlockedByCollapsesAnExactDuplicateButNotATwoRelationCase() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("outsider"),
+		mkIssue("parent", withDep(beads.DepBlocks, "outsider")),
+		mkIssue("focus",
+			func(i *beads.Issue) {
+				i.Dependencies = append(i.Dependencies, beads.Dependency{
+					IssueID: "focus", DependsOnID: "parent", Type: beads.DepParentChild,
+				})
+			},
+			withDep(beads.DepBlocks, "double"),
+			withDep(beads.DepWaitsFor, "double"),
+			withDep(beads.DepBlocks, "parent"),
+		),
+		mkIssue("double"),
+	})
+
+	entries := depsview.Columns(snap, "focus")[0].Entries
+
+	doubleCount, parentBlockerCount, parentInheritedCount := 0, 0, 0
+	for _, e := range entries {
+		switch {
+		case e.ID == "double":
+			doubleCount++
+		case e.ID == "parent" && e.Relation == depsview.RelationBlocker:
+			parentBlockerCount++
+		case e.ID == "parent" && e.Relation == depsview.RelationInherited:
+			parentInheritedCount++
+		}
+	}
+
+	s.Equal(1, doubleCount, "a blocks edge and a waits-for edge to the same target must collapse to one card")
+	s.Equal(1, parentBlockerCount, "the direct blocker fact must still appear")
+	s.Equal(1, parentInheritedCount, "the inherited fact is a different relation and must not be dropped")
 }
 
 func (s *depsTestSuite) TestOpenChildBlocksAnEpic() {

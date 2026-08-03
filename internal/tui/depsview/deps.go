@@ -29,6 +29,10 @@ const (
 	RelationBlocks     Relation = "blocks"
 	RelationRelated    Relation = "related"
 	RelationDiscovered Relation = "discovered from"
+	// RelationNotInView labels the middle column when the focused id has
+	// left the current snapshot — the active filter narrowed it out, or a
+	// reload dropped it — but the view is still about it. See focusEntries.
+	RelationNotInView Relation = "not in current view"
 )
 
 // The four column titles, in render order.
@@ -102,15 +106,26 @@ func blockedByEntries(snap *beads.Snapshot, focusID string) []Entry {
 		}
 	}
 
-	return withoutID(entries, focusID)
+	return dedupeEntries(withoutID(entries, focusID))
 }
 
-// focusEntries is the middle column: the subject itself, or nothing when the
-// active filter has removed it from this snapshot.
+// focusEntries is the middle column: the subject itself, or — when the
+// active filter has removed it from this snapshot while the view is still
+// about it — a bare tagged id, rendered the same way a dangling blocker is
+// (renderEntry's e.Issue == nil path). Without this, "focused (0)" sat
+// beside a populated "blocks" or "related" column with nothing on screen
+// naming what those columns were even about; the bare id keeps the pane
+// honest about its own subject instead of reading as an error.
+//
+// An empty focusID — nothing has ever been revealed — still renders
+// nothing: there is no subject to name yet.
 func focusEntries(snap *beads.Snapshot, focusID string) []Entry {
+	if focusID == "" {
+		return nil
+	}
 	issue, ok := snap.ByID(focusID)
 	if !ok {
-		return nil
+		return []Entry{{ID: focusID, Relation: RelationNotInView}}
 	}
 
 	return []Entry{{Issue: issue, ID: issue.ID, Relation: RelationFocus}}
@@ -161,6 +176,38 @@ func withoutID(entries []Entry, id string) []Entry {
 		if e.ID != id {
 			kept = append(kept, e)
 		}
+	}
+
+	return kept
+}
+
+// dedupeEntries drops an exact (ID, Relation) repeat while preserving order.
+//
+// Snapshot.Blockers is not deduped at the source (unlike Snapshot.dependents,
+// compacted once at build time — see snapshot.go's indexHierarchy): an issue
+// that declares both a "blocks" and a "waits-for" edge to the same target
+// gets that target back twice, and blockedByEntries can also produce a
+// direct blocker that is separately the BlockedAncestor, filing one id
+// twice under RelationBlocker alone. Only the identical (id, relation) pair
+// collapses — the same id appearing under two *different* relations (a
+// direct blocker that is also inherited through the parent chain) is two
+// genuine facts about the issue, and the labels are what tell them apart, so
+// that case is left alone.
+func dedupeEntries(entries []Entry) []Entry {
+	type key struct {
+		id       string
+		relation Relation
+	}
+
+	seen := make(map[key]struct{}, len(entries))
+	kept := entries[:0]
+	for _, e := range entries {
+		k := key{id: e.ID, relation: e.Relation}
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		kept = append(kept, e)
 	}
 
 	return kept
