@@ -204,6 +204,11 @@ func (m *Model) SelectByID(id string) bool {
 	return true
 }
 
+// Reveal satisfies tui.View. Every card is on the board somewhere, and
+// followCursor scrolls the column window to the cursor at render time, so
+// revealing is exactly selecting here too.
+func (m *Model) Reveal(id string) bool { return m.SelectByID(id) }
+
 // MoveUp moves the cursor to the previous row in its column, stopping at the
 // top.
 func (m *Model) MoveUp() {

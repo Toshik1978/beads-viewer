@@ -149,6 +149,11 @@ func (m *Model) SelectByID(id string) bool {
 	return false
 }
 
+// Reveal satisfies tui.View. A flat list hides nothing, so revealing an id is
+// exactly selecting it; the two names differ only for the views where they
+// diverge (see the View interface's own comment).
+func (m *Model) Reveal(id string) bool { return m.SelectByID(id) }
+
 // SelectedID returns the id of the selected issue, or "" when empty.
 func (m *Model) SelectedID() string {
 	if issue := m.Selected(); issue != nil {

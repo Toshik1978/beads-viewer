@@ -113,3 +113,9 @@ func ActivePaneForTest(m *Model) string { return m.views[m.active].View() }
 // holds this text" apart from "the filter has actually been applied" — the
 // distinction the whole debounce turns on.
 func (m *Model) FilterForTest() beads.Filter { return m.filter }
+
+// SelectID reveals id in the active view, so a test can put the cursor
+// somewhere specific before exercising a view switch. Model itself has no
+// exported way to move a selection — every real caller moves it with a
+// keypress, which cannot address a row by id.
+func (m *Model) SelectID(id string) bool { return m.views[m.active].Reveal(id) }

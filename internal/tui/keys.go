@@ -251,12 +251,14 @@ func (m *Model) detailOnScreen() bool {
 	return m.detail != nil && m.layout.DetailWidth > 0
 }
 
-// handleViewSwitchKey applies the three view-selection keys and reports
-// whether it consumed the press. Switching views returns focus to the view:
-// leaving it on the detail pane would strand the new view's cursor until the
-// user pressed Tab again. It never produces a tea.Cmd, unlike handleActionKey
-// beside it, so it reports only the bool handleGlobalKey needs.
+// handleViewSwitchKey applies the view-selection keys and reports whether it
+// consumed the press. Switching views returns focus to the view: leaving it on
+// the detail pane would strand the new view's cursor until the user pressed Tab
+// again. It never produces a tea.Cmd, unlike handleActionKey beside it, so it
+// reports only the bool handleGlobalKey needs.
 func (m *Model) handleViewSwitchKey(msg tea.KeyPressMsg) bool {
+	from := m.active
+
 	switch {
 	case key.Matches(msg, m.keys.ViewList):
 		m.active, m.overlay.focus = 0, focusView
@@ -268,12 +270,34 @@ func (m *Model) handleViewSwitchKey(msg tea.KeyPressMsg) bool {
 		return false
 	}
 
+	m.carrySelection(from, m.active)
+
 	// The layout depends on which view is active — the board takes the whole
 	// body — so a view switch has to recompute it. Without this the board
 	// stays sized for a split it no longer has until the next resize.
 	m.applyLayout(m.layout.Width, m.layout.Height)
 
 	return true
+}
+
+// carrySelection puts the incoming view's cursor on the issue the outgoing view
+// had selected. Every view keeps its own cursor, so without this a switch lands
+// wherever that view was last left — row 0 on a fresh run, or a row the tree
+// restored from a previous session — and the issue the user was actually
+// reading is nowhere on screen.
+//
+// A failed Reveal is deliberately silent. The incoming view simply keeps its
+// own cursor, which is a better answer than refusing to switch: the id can be
+// legitimately absent there (filtered out, or a board card whose column the
+// filter emptied), and there is nothing the user could do differently.
+func (m *Model) carrySelection(from, to int) {
+	if from == to {
+		return
+	}
+
+	if issue := m.views[from].Selected(); issue != nil {
+		m.views[to].Reveal(issue.ID)
+	}
 }
 
 // handleActionKey applies the global keys that are not view selection.

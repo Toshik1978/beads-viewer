@@ -148,6 +148,100 @@ func (s *appTestSuite) TestSwitchingViewsPreservesSelection() {
 	s.Equal(before, m.SelectedID(), "selection is by id, not row index")
 }
 
+// mkIssue builds an open issue with id (and title, for readability in a
+// failure message), leaving every opt to layer on whatever else a test needs.
+func mkIssue(id string, opts ...func(*beads.Issue)) beads.Issue {
+	i := beads.Issue{ID: id, Title: id, Status: beads.StatusOpen}
+	for _, opt := range opts {
+		opt(&i)
+	}
+
+	return i
+}
+
+// withParent records a parent-child dependency on the issue being built, so
+// the tree view has an ancestor to collapse and later expand via Reveal.
+func withParent(parentID string) func(*beads.Issue) {
+	return func(i *beads.Issue) {
+		i.Dependencies = append(i.Dependencies, beads.Dependency{
+			IssueID: i.ID, DependsOnID: parentID, Type: beads.DepParentChild,
+		})
+	}
+}
+
+// keyPress builds the single-character key press s's binding expects. Text is
+// set alongside Code because handleFilterKey (and the filter-box tests that
+// exercise it) read msg.Text, not msg.Code, to find out what was typed.
+func keyPress(s string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: rune(s[0]), Text: s}
+}
+
+// TestSwitchingViewsCarriesTheSelection is Task 3's guard: each view keeps
+// its own cursor, so without carrySelection a switch lands wherever that
+// view was last left rather than on the issue the user was reading.
+func (s *appTestSuite) TestSwitchingViewsCarriesTheSelection() {
+	for _, tc := range []struct {
+		name string
+		key  string
+		want config.ViewKind
+	}{
+		{name: "list to tree", key: "2", want: config.ViewTree},
+		{name: "list to board", key: "3", want: config.ViewBoard},
+	} {
+		s.Run(tc.name, func() {
+			// A parent with a child, so the tree case exercises Reveal's
+			// ancestor expansion rather than merely its cursor move: with
+			// everything below the root collapsed, "kid" has no tree row
+			// until Reveal makes one.
+			m := s.newModel([]beads.Issue{
+				mkIssue("root"),
+				mkIssue("kid", withParent("root")),
+				mkIssue("other"),
+			})
+			m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+			s.Require().True(m.SelectID("kid"), "precondition: the list can select kid")
+			s.Require().Equal("kid", m.SelectedID())
+
+			m.Update(keyPress(tc.key))
+
+			s.Equal(tc.want, tui.ViewKindForTest(m))
+			s.Equal("kid", m.SelectedID(), "the incoming view must open on the issue the outgoing view had")
+		})
+	}
+}
+
+// TestSwitchingBackCarriesTheSelectionToo proves the carry works in both
+// directions, not just outward from the list — the list's own Reveal is a
+// bare SelectByID delegate, so this is what actually exercises it.
+func (s *appTestSuite) TestSwitchingBackCarriesTheSelectionToo() {
+	m := s.newModel([]beads.Issue{
+		mkIssue("root"),
+		mkIssue("kid", withParent("root")),
+		mkIssue("other"),
+	})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(keyPress("2")) // tree
+	s.Require().True(m.SelectID("other"))
+	m.Update(keyPress("1")) // back to the list
+
+	s.Equal(config.ViewList, tui.ViewKindForTest(m))
+	s.Equal("other", m.SelectedID())
+}
+
+// TestSwitchingWithNothingSelectedStillSwitches pins carrySelection's silent
+// failure path: Selected() is nil on an empty snapshot, and that must not
+// block the switch itself.
+func (s *appTestSuite) TestSwitchingWithNothingSelectedStillSwitches() {
+	m := s.newModel(nil)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(keyPress("2"))
+
+	s.Equal(config.ViewTree, tui.ViewKindForTest(m))
+}
+
 func (s *appTestSuite) TestReloadPreservesSelectionByID() {
 	m := s.newModel([]beads.Issue{
 		{ID: "bv-1", Title: "One", Status: beads.StatusOpen},

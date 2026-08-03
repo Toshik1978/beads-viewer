@@ -49,6 +49,8 @@ func (v *spyView) View() string { return "" }
 
 func (v *spyView) Selected() *beads.Issue { return nil }
 
+func (v *spyView) Reveal(string) bool { return false }
+
 // TestInitRequestsTheBackgroundColour is I7's guard: Init is the single
 // entry point for the whole background-detection feature — nothing else
 // ever asks the terminal for its colour — and nothing pinned that it does,

@@ -17,6 +17,13 @@ import (
 // SetTheme is what lets a detected background reach the panes: each New
 // captures a theme.Theme BY VALUE, so without this applyBackground's rebuild
 // (app.go) never reached a view already on screen.
+//
+// Reveal is what makes a view switch land on the issue the user was already
+// looking at. It is deliberately not named SelectByID, which listview and
+// boardview both already export with live callers: revealing may have to
+// *change what is visible* before it can select — the tree expands the
+// ancestors hiding the row, and the dependency view re-roots outright —
+// whereas SelectByID moves a cursor among rows that already exist.
 type View interface {
 	SetSize(width, height int)
 	SetSnapshot(snap *beads.Snapshot)
@@ -24,4 +31,5 @@ type View interface {
 	Update(msg tea.Msg) tea.Cmd
 	View() string
 	Selected() *beads.Issue
+	Reveal(id string) bool
 }
