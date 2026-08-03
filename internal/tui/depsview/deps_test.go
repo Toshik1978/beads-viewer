@@ -169,23 +169,47 @@ func (s *depsTestSuite) TestRelatedColumnTagsEachEdgeKind() {
 }
 
 func (s *depsTestSuite) TestFocusedColumnAgreesWithTheRestOnADuplicateID() {
-	// Snapshot.byID (and every accessor built on it — Blockers, Dependents,
-	// BlockedAncestor, BlockedByOpenChild, RelatedTo) resolves a duplicate id
-	// to the LATER record in input order. The focused column must show that
-	// same record, or a reader would see one record's title in the middle
-	// column while the columns around it are driven by a different same-id
-	// record's dependencies.
+	// Snapshot.ByID (and every accessor built on the same index — Blockers,
+	// Dependents, BlockedAncestor, BlockedByOpenChild, RelatedTo) resolves a
+	// duplicate id to the LATER record in input order. The focused column
+	// must show that same record.
+	//
+	// The two records are given different priorities on purpose: that
+	// breaks a stable-sort tie, so Snapshot.Issues() — which is sorted —
+	// puts "first" (Priority Low) after "second" (Priority Critical), the
+	// reverse of input order. A caller that tried to reproduce ByID's
+	// resolution by scanning Issues() and keeping the last match would
+	// therefore pick "first", the wrong record; only reading the index
+	// itself, built from input order and untouched by the later sort, gets
+	// "second".
 	snap := beads.NewSnapshot([]beads.Issue{
-		mkIssue("dup", func(i *beads.Issue) { i.Title = "first" }),
-		mkIssue("dup", func(i *beads.Issue) { i.Title = "second" }, withDep(beads.DepBlocks, "b")),
+		mkIssue("dup", func(i *beads.Issue) {
+			i.Title = "first"
+			i.Priority = beads.PriorityLow
+		}),
+		mkIssue("dup", func(i *beads.Issue) {
+			i.Title = "second"
+			i.Priority = beads.PriorityCritical
+		}, withDep(beads.DepBlocks, "b")),
 		mkIssue("b"),
 	})
+
+	// Confirm the premise: the sort actually reordered the duplicates
+	// relative to input order, so "last match in sorted order" and "last
+	// match in input order" disagree.
+	var dupOrder []string
+	for _, issue := range snap.Issues() {
+		if issue.ID == "dup" {
+			dupOrder = append(dupOrder, issue.Title)
+		}
+	}
+	s.Equal([]string{"second", "first"}, dupOrder, "the higher-priority record now sorts first")
 
 	cols := depsview.Columns(snap, "dup")
 
 	s.Require().Len(cols[1].Entries, 1)
 	s.Equal("second", cols[1].Entries[0].Issue.Title,
-		"the focused column must resolve the duplicate id the same way byID does")
+		"the focused column must resolve the duplicate id the same way ByID does")
 	s.Equal([]string{"b"}, entryIDs(cols[0]),
 		"blocked-by is computed against the same later record the focused column now shows")
 }

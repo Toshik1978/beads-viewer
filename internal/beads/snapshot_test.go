@@ -239,6 +239,44 @@ func (s *snapshotTestSuite) TestDuplicateIDsAreNotLost() {
 	s.Equal("second", got.Title, "the later record in input order wins the index")
 }
 
+func (s *snapshotTestSuite) TestByIDResolvesTheLastRecordEvenAcrossASortReorder() {
+	// TestDuplicateIDsAreNotLost's two records tie on every sort key, so
+	// scanning the sorted Issues() slice happens to agree with ByID there.
+	// Giving the two records different priorities breaks that tie:
+	// sortIssues moves "second" (Priority Critical) ahead of "first"
+	// (Priority Low), so sorted order no longer matches input order. ByID
+	// reads the byID index, which is built from input order directly and is
+	// unaffected by the sort that runs afterward — a caller cannot
+	// reconstruct this resolution from Issues() alone, which is the whole
+	// reason ByID is exported rather than left for a caller to reimplement.
+	first := mkIssue("dup", func(i *beads.Issue) {
+		i.Title = "first"
+		i.Priority = beads.PriorityLow
+	})
+	second := mkIssue("dup", func(i *beads.Issue) {
+		i.Title = "second"
+		i.Priority = beads.PriorityCritical
+	})
+
+	snap := beads.NewSnapshot([]beads.Issue{first, second})
+
+	// Confirm the premise: the sort actually reordered them.
+	s.Equal("second", snap.Issues()[0].Title, "the higher-priority record now sorts first")
+
+	got, ok := snap.ByID("dup")
+	s.Require().True(ok)
+	s.Equal("second", got.Title,
+		"ByID resolves to the later record in input order, not the one that now sorts last")
+}
+
+func (s *snapshotTestSuite) TestByIDIsFalseForAnUnknownID() {
+	snap := beads.NewSnapshot([]beads.Issue{mkIssue("a")})
+
+	got, ok := snap.ByID("nope")
+	s.Nil(got)
+	s.False(ok)
+}
+
 func (s *snapshotTestSuite) TestDuplicateIDsDoNotCrossContaminateTheHierarchy() {
 	// Regression for a parentOf index keyed by id alone: p is a plain root.
 	// b and c share the id "dup"; b declares p as its parent, c declares no

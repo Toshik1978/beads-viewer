@@ -97,6 +97,22 @@ func (s *Snapshot) Len() int { return len(s.issues) }
 // Children returns an issue's children in canonical order.
 func (s *Snapshot) Children(id string) []*Issue { return slices.Clone(s.children[id]) }
 
+// ByID returns the issue this snapshot resolves id to, and whether there is
+// one. Duplicate ids resolve to the record that appears last in the input,
+// per NewSnapshot's own policy — issues.jsonl is append-only, so a later line
+// is the more recent write.
+//
+// It exists because a caller cannot reproduce that resolution from Issues():
+// that slice is sorted, so the input order the policy is defined in terms of
+// is no longer observable. Scanning it and taking the last match agrees only
+// when the duplicate records happen to tie on every sort key, which nothing
+// guarantees — two writes of one issue routinely differ in priority.
+func (s *Snapshot) ByID(id string) (*Issue, bool) {
+	issue, ok := s.byID[id]
+
+	return issue, ok
+}
+
 // Parent returns an issue's parent, if it declares one that exists.
 func (s *Snapshot) Parent(id string) (*Issue, bool) {
 	parentID, ok := s.parentOf[id]
