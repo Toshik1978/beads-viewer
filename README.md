@@ -6,9 +6,10 @@
 
 `br` is a command-line issue tracker that stores a project's issues as
 `.beads/issues.jsonl`. `bv` is its read-only terminal companion: it reads
-that file and gives you three ways to look at it — a list with a detail
-pane, a parent/child tree, and a kanban board — with live reload as `br`
-writes.
+that file and gives you four ways to look at it — a list with a detail
+pane, a parent/child tree, a kanban board, and a dependency board showing
+what blocks the issue you are on and what is waiting on it — with live
+reload as `br` writes.
 
 `bv` never writes anywhere inside `.beads/` and never spawns a subprocess.
 `br` is the only thing that ever changes your data; `bv` only reads it.
@@ -69,8 +70,8 @@ bv [flags]
 
       --db string      path to a .beads directory (overrides BEADS_DIR)
       --theme string   colour scheme: auto, light or dark
-      --view string    initial view: list, tree or board
-      --hide-closed    hide closed issues
+      --view string    initial view: list, tree, board or deps
+      --hide-closed    hide closed issues (default true)
   -v, --version        version for bv
   -h, --help           help for bv
 ```
@@ -132,6 +133,27 @@ filter to what it was when the box opened — including a filter that was
 already active before you pressed `/`. With the box closed, `esc` clears the
 typed query outright, leaving hide-closed alone.
 
+## The dependency view
+
+Press `4` from any view and the issue you were looking at becomes the subject of
+four columns: what is blocking it, the issue itself, what it blocks, and what it
+is merely related to.
+
+The left column answers more than one question, because "what is blocking this"
+has more than one answer. A card there can be an ordinary unfinished dependency;
+an id this workspace has no issue for, labelled *not in workspace*; an ancestor
+labelled *via parent*, when the thing holding you up is something a parent is
+waiting on rather than anything about this issue; or, for an epic, a still-open
+child. Each is labelled, because they need different responses.
+
+`enter` makes the highlighted card the new subject and rebuilds the columns
+around it, so a chain of blockers can be walked one hop at a time. `backspace`
+walks back. Leaving with `1`, `2` or `3` takes the issue you ended on with you.
+
+Parent and child edges are deliberately absent: that hierarchy is the tree
+view's subject, and repeating it here would make the outer columns mean two
+things at once.
+
 ## Configuration
 
 `bv` resolves its settings from four sources, in decreasing precedence:
@@ -143,9 +165,9 @@ A full worked example of the config file:
 
 ```yaml
 # ~/.config/bv/config.yaml
-theme: dark          # auto (default), light or dark
-view: tree            # list (default), tree or board
-hide_closed: true     # false by default
+theme: dark           # auto (default), light or dark
+view: tree            # list (default), tree, board or deps
+hide_closed: false    # true by default
 ```
 
 The equivalent environment variables are `BV_THEME`, `BV_VIEW`,
@@ -193,11 +215,14 @@ Two things the numbers do not mean, worth being explicit about:
   `bv`. This is the same class of divergence as the ready count below, just
   visible on every frame instead of only in a project that has reconfigured
   its ready group.
-- **Hide-closed narrows what you see, not what gets counted**, and unlike
-  typing a search, it needs no keypress to be active: `hide_closed: true` in
-  `config.yaml` turns it on for the whole session, so a session can start in
-  that mode silently. It is one filter shared by all three views — `c`
-  toggles it everywhere at once, and it is not persisted between runs. The
+- **Hide-closed narrows what you see, not what gets counted**, and it is on
+  by default: a session started with no flag, no environment variable and no
+  config entry already hides closed issues, so the status bar reads
+  `(N hidden)` and `hide closed` before you have pressed anything. Turning it
+  off takes one of four things — `--hide-closed=false`, `hide_closed: false`
+  in `config.yaml`, `BV_HIDE_CLOSED=false`, or pressing `c` during the
+  session. It is one filter shared by all four views — `c` toggles it
+  everywhere at once, and the choice is not persisted between runs. The
   status bar's counts stay computed from every issue in the workspace either
   way, alongside an `(N hidden)` indicator while it is on.
 

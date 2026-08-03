@@ -94,7 +94,7 @@ bookkeeping until nothing about it was reviewable in isolation. Every limit
 below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
-- Non-test Go: at most **7,100 lines** total (raised five times: from 6,000
+- Non-test Go: at most **8,600 lines** total (raised six times: from 6,000
   to 6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
   six interface features under the border/focus/board epic; from 6,800 to
   6,900 for `bv-wkx`, the unplanned blockedness fix, at 162 lines; from 6,900
@@ -102,7 +102,10 @@ optimize for its own sake:
   epic's first task, which extracts the shared row formatter into its own
   package — a new package costs roughly 25 lines of declaration, doc comment
   and imports beyond the 50 it receives, and the epic's tree and board work
-  adds about 50 more — see the commit history for all five decisions recorded
+  adds about 50 more; from 7,100 to 8,600 for the dependency-view epic, which
+  added a fourth view package (`depsview`), a second shared card-formatting
+  package (`cardfmt`, alongside `rowfmt`) and the snapshot's reverse
+  dependency index — see the commit history for all six decisions recorded
   in full. The first raise is the precedent for the third: a correctness fix
   nobody budgeted for is exactly the case this cap should yield to, and the
   epic's own six features landed at 6,720, inside their budget. The fourth is
@@ -110,9 +113,23 @@ optimize for its own sake:
   zero headroom stops measuring the codebase and starts editing its prose —
   comments were compressed to fit the number rather than to read better.
   Leave headroom, and when this cap next binds, raise it rather than
-  shortening an explanation. The structural limits below are the ones that
-  actually detect the regression this cap is a proxy for, and they were
-  satisfied with margin at each raise).
+  shortening an explanation. The sixth raise is the fourth's lesson applied
+  rather than merely repeated, and it is worth recording exactly how it was
+  arrived at, because the estimate was wrong twice before it was right: the
+  epic's plan targeted 7,600; that was corrected to 8,200 mid-epic, once
+  `depsview/deps.go` alone came in at 194 lines against a roughly 300-line
+  estimate for the *whole* view; the epic then actually finished at
+  **8,177** non-test lines, which against 8,200 would have left only 23 lines
+  of headroom — the zero-slack case the fourth raise exists to warn about.
+  8,600 is the third figure, and the first with real slack. Both of the
+  earlier projections were low by roughly 290 lines, each time because a new
+  view package cost substantially more than a line-count estimate
+  anticipated — a lesson worth carrying forward rather than treating as
+  settled: the next person estimating a view package's size should assume it
+  will run over by more than they think, not budget to the estimate. The
+  structural limits below are the ones that actually detect the regression
+  this cap is a proxy for, and they were satisfied with margin at each
+  raise).
 - `cmd/bv/main.go`: at most **150 lines**.
 - No non-test source file exceeds **500 lines**. Test files are governed
   instead by one file per suite — a test file that maps to exactly one

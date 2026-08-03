@@ -12,8 +12,9 @@ internal/beads      domain: JSONL decoding, snapshot indexing, filtering, derive
 internal/config     configuration resolution (flags, env, file, defaults)
 internal/watch      debounced filesystem notification
 internal/tui        the bubbletea application: root model, key map, layout
-  ├── listview, treeview, boardview   the three views, as peer packages
-  ├── rowfmt                         row composition and styling shared by list and tree
+  ├── listview, treeview, boardview, depsview   the four views, as peer packages
+  ├── rowfmt                         row composition shared by list and tree
+  ├── cardfmt                        card composition shared by board and deps
   ├── detail                          the detail pane (markdown rendering)
   ├── theme                           colour scheme resolution and styles
   └── uitext                         display-width-aware text helpers
@@ -43,6 +44,16 @@ logic: without it, `treeview` would either duplicate `listview`'s styling or
 import `listview` directly, and the rule in the next section would already be
 broken by the package that follows it in this diagram.
 
+`internal/tui/cardfmt` exists for the same reason, one level up: `boardview`
+and `depsview` both render an issue as the same card — title, status,
+priority — and without a shared package the second view built would have had
+to either duplicate that rendering or import the first, breaking the same
+peer rule `rowfmt` was created to keep intact. Two views wanting the
+identical presentation is not a coincidence that happened twice; it is what a
+fixed-width card representation of an issue looks like regardless of which
+view is asking for one, which is exactly the argument for factoring it out
+before a third view repeats the choice a third time.
+
 `internal/beads` imports nothing from `charm.land` or any other UI package.
 This is not incidental: it is what makes the domain — JSONL decoding,
 snapshot indexing, ready/blocked derivation, filtering — testable without a
@@ -56,9 +67,10 @@ crossed the wrong way.
 
 The `View` interface (`internal/tui/view.go`) is deliberately narrow:
 `SetSize`, `SetSnapshot`, `SetTheme`, `Update`, `View`, `Selected`. The list,
-tree and board views each implement it in their own package, and the root
-`Model` holds them as `views [3]View` — an array of the interface, not three
-named struct fields, let alone three sets of inlined state.
+tree, board and dependency views each implement it in their own package, and
+the root `Model` holds them as `views [viewCount]View` — an array of the
+interface, not four named struct fields, let alone four sets of inlined
+state.
 
 The reason is concrete, not stylistic: the terminal application this project
 replaced kept every view's state as fields directly on one root `Model` —
@@ -66,11 +78,21 @@ roughly 100 fields and 90 methods by the time this rewrite started, because
 each new feature for the list, the tree or the board had nowhere to go except
 onto that same struct. `Model` in this codebase is capped at 12 fields by a
 test (`TestModelStaysSmall`), and the cap is enforceable precisely because
-nothing about the list, tree or board's own internal state is allowed to live
-there — it lives inside `listview.Model`, `treeview.Model` and
-`boardview.Model`, each in its own package, each free to grow its own fields
-without threatening the cap. Adding a fourth view means adding a package and
-one array slot, not renegotiating what the root model is allowed to hold.
+nothing about any view's own internal state is allowed to live there — it
+lives inside `listview.Model`, `treeview.Model`, `boardview.Model` and
+`depsview.Model`, each in its own package, each free to grow its own fields
+without threatening the cap.
+
+This section used to predict that adding a fourth view would mean adding a
+package and one array slot, not renegotiating what the root model is allowed
+to hold. That prediction has now been tested rather than merely stated: the
+dependency view epic added one view package (`depsview`), one array slot
+(`viewCount` from 3 to 4), one `config.ViewKind` value (`ViewDeps`), and two
+key bindings (`ViewDeps`, `Back`) — plus a 28-line move out of `app.go` to
+stay clear of this repository's 500-line-per-file cap, since the fourth
+slot's wiring would otherwise have pushed it over. `Model`'s own field count
+did not move. That is the claim the prediction was actually making, and it is
+the one that held.
 
 ## Filtering happens once, in the app
 
@@ -94,6 +116,18 @@ without a lock: the old snapshot the UI is currently rendering from is never
 touched, so there is nothing for a lock to protect. The app simply swaps the
 pointer (`Model.applySnapshot`) once the new snapshot is ready, and the next
 frame renders from it.
+
+The same construction pass also builds a reverse index. Each `Issue`'s own
+`Dependencies` only says what blocks *it* — the forward direction. `Snapshot`
+additionally indexes `dependents` (every issue that declares a dependency on a
+given id, i.e. what that id blocks) and `relatives` (every issue joined to it
+by a related or discovered-from edge), both keyed by id, in the same single
+pass. "What does this block" and "what is related to this" are therefore
+answered by a map lookup rather than a scan of every issue in the workspace —
+a cost the dependency view pays on every re-root and every reload, so a
+linear scan there is not a one-off. `detail.renderBlocks` used to do exactly
+that scan, on every frame, before the reverse index existed to make it
+unnecessary.
 
 ## The directory is watched, not the file
 
