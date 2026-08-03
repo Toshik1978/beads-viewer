@@ -2,6 +2,8 @@ package depsview_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -379,6 +381,29 @@ func (s *depsTestSuite) TestHeadingsCarryTheirCounts() {
 	s.Require().True(m.Reveal("focus"))
 
 	s.Contains(ansi.Strip(m.View()), "blocked by (1)")
+}
+
+// TestGoldenRendering pins depsview's own frame byte-for-byte, the gap
+// bv-7pt's own acceptance criteria called for: listview, treeview and
+// boardview each have a golden test and this package alone did not. Column
+// geometry, heading padding, the inter-column gap width and where "+N more"
+// lands were pinned only by Contains assertions until now — none of which
+// can catch a shift in alignment or spacing the way a byte-exact frame can.
+//
+// The golden file stores the ANSI-stripped frame, per the house rule (see
+// boardview's identical note): an escape-laden golden is unreviewable, and
+// one nobody can read gets regenerated on sight rather than checked.
+// Styling stays asserted separately —
+// TestSelectedCardRendersDifferentlyFromUnselected, above, already covers
+// selection.
+func (s *depsTestSuite) TestGoldenRendering() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	actual := ansi.Strip(m.View())
+	s.Equal(golden(s.T(), "deps_120x20.golden", actual), actual)
 }
 
 func (s *depsTestSuite) TestViewFitsItsAllottedGeometry() {
@@ -862,4 +887,28 @@ func (s *depsTestSuite) TestHelpKeysCoversEveryBinding() {
 	} {
 		s.Contains(keys, want)
 	}
+}
+
+// golden reads a golden file from testdata, or writes actual to it when the
+// UPDATE_GOLDEN environment variable is set. Mirrors internal/tui/boardview,
+// internal/tui/listview and internal/tui/treeview's helper of the same name
+// and shape.
+func golden(t *testing.T, name, actual string) string {
+	t.Helper()
+
+	path := filepath.Join("testdata", name)
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(path, []byte(actual), 0o600); err != nil {
+			t.Fatalf("write golden %s: %v", path, err)
+		}
+
+		return actual
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden %s: %v", path, err)
+	}
+
+	return string(b)
 }
