@@ -217,7 +217,9 @@ func (m *Model) columnWidth() int {
 }
 
 // renderColumn renders one column's heading and as many entries as fit in
-// m.height, appending a "+N more" line when some had to be dropped.
+// m.height, appending a "+N more" line counting only what is hidden below
+// the window — not what has scrolled off the top above start, which is
+// behind the cursor's own scroll rather than something left to tell about.
 func (m *Model) renderColumn(col Column, width int, focused bool) string {
 	lines := []string{m.headingLine(col, width, focused)}
 
@@ -225,7 +227,7 @@ func (m *Model) renderColumn(col Column, width int, focused bool) string {
 	for i := start; i < end; i++ {
 		lines = append(lines, m.renderEntry(col.Entries[i], width, focused && i == m.row))
 	}
-	if hidden := len(col.Entries) - (end - start); hidden > 0 {
+	if hidden := len(col.Entries) - end; hidden > 0 {
 		lines = append(lines, m.theme.Muted.Render(uitext.Truncate(fmt.Sprintf("+%d more", hidden), width)))
 	}
 

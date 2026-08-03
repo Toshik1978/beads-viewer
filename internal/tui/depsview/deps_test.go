@@ -455,6 +455,40 @@ func (s *depsTestSuite) TestRelatedColumnBudgetsLabelledCardsHonestly() {
 		"clip() alone already makes the height bound pass, which is why the old bug was invisible")
 }
 
+// TestPlusMoreCountsOnlyWhatIsHiddenBelow pins Minor 6. Eight unlabelled
+// blockers (RelationBlocker, cardfmt.Height(false) == 4 rows each, no label
+// line) at a height that only fits three at a time forces the cursor,
+// jumped to the last entry, to scroll the window to [5, 8) — five entries
+// hidden above the window, none below. The old "+N more" counted both:
+// len(Entries)-(end-start) == 8-3 == 5, so it read "+5 more" even though
+// nothing was actually below the visible window to scroll down to.
+func (s *depsTestSuite) TestPlusMoreCountsOnlyWhatIsHiddenBelow() {
+	issues := []beads.Issue{mkIssue("focus")}
+	for i := 1; i <= 8; i++ {
+		id := fmt.Sprintf("b%d", i)
+		issues[0].Dependencies = append(issues[0].Dependencies, beads.Dependency{
+			IssueID: "focus", DependsOnID: id, Type: beads.DepBlocks,
+		})
+		issues = append(issues, mkIssue(id))
+	}
+
+	m := depsview.New(s.th())
+	// avail = height - headerLines(1) = 13; the scroll budget (avail-1) is
+	// 12, exactly three unlabelled cards (3*4), so the window can show three
+	// of the eight blockers at a time.
+	m.SetSize(200, 14)
+	m.SetSnapshot(beads.NewSnapshot(issues))
+	s.Require().True(m.Reveal("focus"))
+
+	m.MoveLeft() // onto "blocked by", the only populated column besides "focused"
+	s.Require().Equal("b1", m.SelectedID())
+	m.JumpToBottom() // scrolls the window to the last three blockers
+
+	out := ansi.Strip(m.View())
+	s.NotContains(out, "more",
+		"nothing is hidden below the last visible blocker; everything hidden scrolled off the top")
+}
+
 func (s *depsTestSuite) TestDegenerateSizesDoNotPanic() {
 	m := depsview.New(s.th())
 	m.SetSnapshot(s.sample())
