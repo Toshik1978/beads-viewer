@@ -109,7 +109,7 @@ func (s *WhiteBoxSuite) TestBackgroundDetectionReachesEveryView() {
 // learns its width on activation paints its first frame at the wrong size,
 // and that would stay invisible until a real view landed in a later task.
 func (s *WhiteBoxSuite) TestResizeReachesEveryView() {
-	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}, &spyView{}}
 	// detail is deliberately left nil: this test isolates resize's loop over
 	// m.views from the real detail pane, and resize (see app.go) guards the
 	// nil case for exactly this kind of direct construction.
@@ -144,7 +144,7 @@ func (s *WhiteBoxSuite) TestResizeReachesEveryView() {
 // WindowSizeMsg wide enough to set layout.DetailWidth > 0, then a pgdown
 // key press, dereferences the nil m.detail in m.detail.Update(msg).
 func (s *WhiteBoxSuite) TestPgDownDoesNotPanicWithoutADetailPane() {
-	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}, &spyView{}}
 	m := &Model{keys: DefaultKeyMap(), views: spies, active: 0}
 
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -160,7 +160,7 @@ func (s *WhiteBoxSuite) TestPgDownDoesNotPanicWithoutADetailPane() {
 // and the only way to reach this state, since Compute gives even a 1-column
 // terminal a stacked detail pane of the full width.
 func (s *WhiteBoxSuite) TestTabIsANoOpWithNoDetailPaneOnScreen() {
-	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}, &spyView{}}
 	m := &Model{keys: DefaultKeyMap(), views: spies, active: 0}
 
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -176,7 +176,7 @@ func (s *WhiteBoxSuite) TestTabIsANoOpWithNoDetailPaneOnScreen() {
 // rendered frame cannot tell "full width" apart from "split, but the detail
 // pane happened to render nothing".
 func (s *WhiteBoxSuite) TestBoardGetsTheWholeBodyWidth() {
-	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}, &spyView{}}
 	m := &Model{keys: DefaultKeyMap(), views: spies, active: boardSlot}
 
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -192,7 +192,7 @@ func (s *WhiteBoxSuite) TestBoardGetsTheWholeBodyWidth() {
 // used to run only on WindowSizeMsg, so a view switch left the board sized
 // for a split it no longer has until the terminal happened to be resized.
 func (s *WhiteBoxSuite) TestSwitchingToTheBoardRelaysOutWithoutAResize() {
-	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}}
+	spies := [viewCount]View{&spyView{}, &spyView{}, &spyView{}, &spyView{}}
 	m := &Model{keys: DefaultKeyMap(), views: spies, active: 0}
 
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -248,4 +248,31 @@ func (s *WhiteBoxSuite) TestResizeGivesTheDetailPaneItsOwnWidth() {
 	s.Greater(widest, layout.ListWidth,
 		"the detail pane must have been given its own, wider width — not the list's")
 	s.LessOrEqual(widest, layout.DetailWidth)
+}
+
+// TestEveryViewKindRoundTripsThroughItsSlot is bv-vz2.4's drift guard:
+// viewCount, the views literal in NewModel and viewKinds are three places
+// that must agree, and ireturn rules out collapsing them into one kind-keyed
+// constructor (View is an interface). This pins the agreement instead.
+//
+// A length check would not: viewKinds returns a [viewCount]config.ViewKind,
+// so its length is viewCount by construction. The real failure is a kind
+// that exists in config but is missing from viewKinds — activeIndex then
+// falls through to its "unrecognised kind" return 0, and BV_VIEW=deps
+// silently opens the list instead.
+func (s *WhiteBoxSuite) TestEveryViewKindRoundTripsThroughItsSlot() {
+	for _, kind := range []config.ViewKind{
+		config.ViewList, config.ViewTree, config.ViewBoard, config.ViewDeps,
+	} {
+		s.Equal(kind, viewKindAt(activeIndex(kind)), "%s must round-trip through its slot", kind)
+	}
+
+	m, err := NewModel(Deps{
+		Cfg:   config.Config{},
+		Theme: theme.New(config.ThemeDark, theme.BackgroundDark),
+	})
+	s.Require().NoError(err)
+	for i, v := range m.views {
+		s.NotNil(v, "slot %d (%s) was never constructed", i, viewKinds()[i])
+	}
 }

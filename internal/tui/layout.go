@@ -158,11 +158,13 @@ func (l Layout) paneHeights() (list, detail int) {
 }
 
 // showsDetail reports whether the active view gets a detail pane beside it.
-// The board does not: its columns are the content, and squeezing them into
-// listShare of the terminal to make room for a pane describing one card is a
-// worse trade than sending the user to the list, which Enter does.
+// Neither the board nor the dependency view does: their columns are the
+// content, and squeezing them into listShare of the terminal to make room for
+// a pane describing one card is a worse trade than sending the user to the
+// list, which Enter does from the board. The dependency view's four columns
+// would land under boardview's own minColumnWidth at ordinary terminal sizes.
 func (m *Model) showsDetail() bool {
-	return m.active != boardSlot
+	return m.active != boardSlot && m.active != depsSlot
 }
 
 // applyLayout recomputes pane geometry for width x height and propagates it

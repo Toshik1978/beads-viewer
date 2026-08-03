@@ -32,6 +32,7 @@ const (
 	ViewList  ViewKind = "list"
 	ViewTree  ViewKind = "tree"
 	ViewBoard ViewKind = "board"
+	ViewDeps  ViewKind = "deps"
 )
 
 // Config is the resolved configuration.
@@ -188,9 +189,9 @@ func validate(cfg Config) error {
 	}
 
 	switch cfg.View {
-	case ViewList, ViewTree, ViewBoard:
+	case ViewList, ViewTree, ViewBoard, ViewDeps:
 	default:
-		return fmt.Errorf("invalid view %q: want list, tree or board", cfg.View)
+		return fmt.Errorf("invalid view %q: want list, tree, board or deps", cfg.View)
 	}
 
 	return nil

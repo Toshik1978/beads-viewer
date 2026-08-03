@@ -174,6 +174,15 @@ func (s *configTestSuite) TestHideClosedFlagCanOverrideFileToFalse() {
 	s.True(cfg.HideClosed, "an unset flag must not override the file")
 }
 
+func (s *configTestSuite) TestDepsIsAValidView() {
+	s.isolate()
+	s.T().Setenv("BV_VIEW", "deps")
+
+	cfg, err := config.Load(config.Flags{})
+	s.Require().NoError(err)
+	s.Equal(config.ViewDeps, cfg.View)
+}
+
 func (s *configTestSuite) TestInvalidValuesAreRejected() {
 	s.isolate()
 

@@ -44,7 +44,7 @@ func run() int {
 	cmd.Flags().StringVar(&flags.DBPath, "db", "",
 		"path to a .beads directory (overrides BEADS_DIR)")
 	cmd.Flags().StringVar(&flags.Theme, "theme", "", "colour scheme: auto, light or dark")
-	cmd.Flags().StringVar(&flags.View, "view", "", "initial view: list, tree or board")
+	cmd.Flags().StringVar(&flags.View, "view", "", "initial view: list, tree, board or deps")
 	cmd.Flags().BoolVar(&flags.HideClosed, "hide-closed", false, "hide closed issues")
 
 	if err := cmd.Execute(); err != nil {

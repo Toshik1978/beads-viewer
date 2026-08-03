@@ -4,6 +4,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
+	"github.com/Toshik1978/beads-viewer/internal/config"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 )
 
@@ -32,4 +33,38 @@ type View interface {
 	View() string
 	Selected() *beads.Issue
 	Reveal(id string) bool
+}
+
+// viewKinds pairs each Model.views slot with the config.ViewKind it
+// represents. activeIndex and viewKindAt read it in opposite directions
+// instead of each maintaining its own switch, which is what kept the two from
+// drifting out of sync when board's slot last moved.
+//
+// It lives beside the View interface rather than on the root model: it is
+// view-slot bookkeeping, and app.go is the file this project's 500-line cap
+// actually binds on.
+func viewKinds() [viewCount]config.ViewKind {
+	return [viewCount]config.ViewKind{config.ViewList, config.ViewTree, config.ViewBoard, config.ViewDeps}
+}
+
+// activeIndex maps the configured starting view to its slot in Model.views.
+// An unrecognised kind — config.Load validates it, but activeIndex must still
+// be total — falls back to the list, the same as ViewList itself.
+func activeIndex(kind config.ViewKind) int {
+	for i, k := range viewKinds() {
+		if k == kind {
+			return i
+		}
+	}
+
+	return 0
+}
+
+// viewKindAt is activeIndex's inverse, for the status bar.
+func viewKindAt(i int) config.ViewKind {
+	if kinds := viewKinds(); i >= 0 && i < len(kinds) {
+		return kinds[i]
+	}
+
+	return config.ViewList
 }

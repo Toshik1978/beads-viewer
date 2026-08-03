@@ -169,6 +169,16 @@ func withParent(parentID string) func(*beads.Issue) {
 	}
 }
 
+// withDep records a dependency of type t from the issue being built onto
+// target, so the dependency view has a column to populate.
+func withDep(t beads.DepType, target string) func(*beads.Issue) {
+	return func(i *beads.Issue) {
+		i.Dependencies = append(i.Dependencies, beads.Dependency{
+			IssueID: i.ID, DependsOnID: target, Type: t,
+		})
+	}
+}
+
 // keyPress builds the single-character key press s's binding expects. Text is
 // set alongside Code because handleFilterKey (and the filter-box tests that
 // exercise it) read msg.Text, not msg.Code, to find out what was typed.
@@ -244,6 +254,59 @@ func (s *appTestSuite) TestSwitchingWithNothingSelectedStillSwitches() {
 	m.Update(keyPress("2"))
 
 	s.Equal(config.ViewTree, tui.ViewKindForTest(m))
+}
+
+// TestFourOpensTheDependencyViewOnTheSelection is Task 10's guard: pressing 4
+// must switch to the dependency view and carry the active selection in as its
+// focus, the same way switching to the tree or board does.
+func (s *appTestSuite) TestFourOpensTheDependencyViewOnTheSelection() {
+	m := s.newModel([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+	})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	s.Require().True(m.SelectID("focus"))
+
+	m.Update(keyPress("4"))
+
+	s.Equal(config.ViewDeps, tui.ViewKindForTest(m))
+	s.Contains(ansi.Strip(tui.ActivePaneForTest(m)), "blocked by")
+	s.Contains(ansi.Strip(tui.ActivePaneForTest(m)), "waiter")
+}
+
+// TestLeavingTheDependencyViewCarriesItsFocus proves carrySelection reaches
+// the dependency view's own Reveal, which re-roots rather than moving a
+// cursor: a walk through it that ends on "waiter" must land the list there
+// too, not back on "focus".
+func (s *appTestSuite) TestLeavingTheDependencyViewCarriesItsFocus() {
+	m := s.newModel([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+	})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	s.Require().True(m.SelectID("focus"))
+
+	m.Update(keyPress("4"))
+	m.Update(keyPress("l")) // onto the blocks column
+	m.Update(keyPress("l"))
+	s.Require().Equal("waiter", m.SelectedID())
+
+	m.Update(keyPress("1"))
+
+	s.Equal(config.ViewList, tui.ViewKindForTest(m))
+	s.Equal("waiter", m.SelectedID(), "a walk in the dependency view must land the list where it ended")
+}
+
+// TestTheDependencyViewTakesTheWholeBody pins showsDetail's exclusion of the
+// dependency view: four columns squeezed into 42% of the terminal would be
+// under the board's own minimum column width.
+func (s *appTestSuite) TestTheDependencyViewTakesTheWholeBody() {
+	m := s.newModel([]beads.Issue{mkIssue("a")})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(keyPress("4"))
+
+	s.Equal(0, tui.LayoutForTest(m).DetailWidth)
 }
 
 func (s *appTestSuite) TestReloadPreservesSelectionByID() {

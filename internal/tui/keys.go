@@ -8,6 +8,7 @@ import (
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
 	"github.com/Toshik1978/beads-viewer/internal/config"
+	"github.com/Toshik1978/beads-viewer/internal/tui/depsview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/listview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 )
@@ -16,14 +17,6 @@ import (
 // on the status line. OSC52 gives no acknowledgement of its own, so this is
 // the only signal the user gets that anything happened at all.
 const clipboardMessageTTL = 3 * time.Second
-
-// filterDebounce is how long after the last keystroke the in-progress filter
-// is applied. Filter.Apply rebuilds and re-indexes a whole second snapshot —
-// benchmarked at 149us/818KB/1,655 allocs on a 758-record fixture — so a
-// burst of typing must cost one re-filter, not one per character. 150ms is
-// below the threshold at which a pause reads as lag and above a fast typist's
-// inter-key interval.
-const filterDebounce = 150 * time.Millisecond
 
 // KeyMap is the single source of truth for bv's key bindings. Views that need
 // to know a binding — the active view's own navigation, and the help overlay
@@ -36,6 +29,7 @@ type KeyMap struct {
 	ViewList   key.Binding
 	ViewTree   key.Binding
 	ViewBoard  key.Binding
+	ViewDeps   key.Binding
 	Help       key.Binding
 	Filter     key.Binding
 	Yank       key.Binding
@@ -43,6 +37,7 @@ type KeyMap struct {
 	ScrollDown key.Binding
 	Focus      key.Binding
 	Open       key.Binding
+	Back       key.Binding
 	ClearQuery key.Binding
 }
 
@@ -59,6 +54,7 @@ func DefaultKeyMap() KeyMap {
 		ViewList:   key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "list")),
 		ViewTree:   key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "tree")),
 		ViewBoard:  key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "board")),
+		ViewDeps:   key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "dependencies")),
 		Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Filter:     key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
 		Yank:       key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yank")),
@@ -71,7 +67,13 @@ func DefaultKeyMap() KeyMap {
 		ScrollUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", "scroll detail up")),
 		ScrollDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "scroll detail down")),
 		Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus list / detail")),
-		Open:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open in list (board)")),
+		Open: key.NewBinding(key.WithKeys("enter"),
+			key.WithHelp("enter", "open in list (board) / re-root (deps)")),
+		// Back is the dependency view's own history: enter re-roots the columns
+		// on the highlighted card, and without a way back a walk down a chain
+		// of blockers is a one-way trip. It reaches only that view — see
+		// handleActionKey.
+		Back: key.NewBinding(key.WithKeys("backspace"), key.WithHelp("backspace", "back (deps)")),
 		// "query", not "filter": it leaves hide-closed alone, c's business. A
 		// binding, not the bare msg.String() it was, so the docs can see it.
 		ClearQuery: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear the filter query")),
@@ -266,6 +268,8 @@ func (m *Model) handleViewSwitchKey(msg tea.KeyPressMsg) bool {
 		m.active, m.overlay.focus = 1, focusView
 	case key.Matches(msg, m.keys.ViewBoard):
 		m.active, m.overlay.focus = 2, focusView
+	case key.Matches(msg, m.keys.ViewDeps):
+		m.active, m.overlay.focus = depsSlot, focusView
 	default:
 		return false
 	}
@@ -332,8 +336,25 @@ func (m *Model) handleActionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case key.Matches(msg, m.keys.Yank):
 		return m.yank(), true
+	default:
+		return m.handleSelectionKey(msg)
+	}
+}
+
+// handleSelectionKey applies the global keys that act on the current
+// selection: opening it, walking the dependency view's history back, and
+// clearing the filter query. Split out of handleActionKey purely to stay
+// inside that function's own complexity limit — it runs only once nothing
+// above has matched, so the routing order handleActionKey's own doc comment
+// describes is unchanged.
+func (m *Model) handleSelectionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch {
 	case key.Matches(msg, m.keys.Open):
-		m.openSelectedInList()
+		m.openSelected()
+
+		return nil, true
+	case key.Matches(msg, m.keys.Back):
+		m.backInDeps()
 
 		return nil, true
 	case key.Matches(msg, m.keys.ClearQuery):
@@ -352,91 +373,14 @@ func (m *Model) handleActionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 }
 
-// handleFilterKey edits the in-progress filter text. Every key is consumed —
-// that is what stops typing "q" into the filter box from quitting the app,
-// the bug fixed upstream as #176 — except Enter, which commits the edit
-// synchronously, Escape, which restores the filter as it was when the box
-// opened, and ctrl+c, which quits (I4): it carries no msg.Text for the
-// default branch to swallow it into, so it used to be silently dropped.
-// Backspace and a printed character both schedule a debounced apply rather
-// than applying immediately, so a burst of typing costs one re-filter.
-func (m *Model) handleFilterKey(msg tea.KeyPressMsg) tea.Cmd {
-	if msg.String() == "ctrl+c" {
-		return tea.Quit
+// backInDeps walks the dependency view's history one step back, when it is
+// the active view. Back is scoped to this one view (KeyMap.Back's own
+// comment explains why) and is a no-op everywhere else.
+func (m *Model) backInDeps() {
+	if deps, ok := m.views[depsSlot].(*depsview.Model); ok && m.active == depsSlot {
+		deps.Back()
 	}
-
-	switch msg.Code {
-	case tea.KeyEnter:
-		filter := m.filter
-		filter.Text = m.overlay.buffer
-		m.SetFilter(filter)
-		m.closeFilterOverlay()
-	case tea.KeyEscape:
-		// Restore, not clear. Typing applies as it goes now, so m.filter
-		// already holds the abandoned edit; filterBefore is the only record
-		// of what the user had before opening the box.
-		m.SetFilter(m.overlay.filterBefore)
-		m.closeFilterOverlay()
-	case tea.KeyBackspace:
-		if n := len(m.overlay.buffer); n > 0 {
-			m.overlay.buffer = m.overlay.buffer[:n-1]
-		}
-
-		return m.scheduleFilterApply()
-	default:
-		if msg.Text != "" {
-			m.overlay.buffer += msg.Text
-
-			return m.scheduleFilterApply()
-		}
-	}
-
-	return nil
 }
-
-// scheduleFilterApply debounces the live filter: every keystroke bumps the
-// generation and schedules exactly one tick.
-//
-// token is captured by value here, deliberately. A closure that read
-// m.overlay.filterToken when the tick fired would always see the latest
-// generation, so every stale tick would report itself as current and the
-// guard in applyBufferedFilter would never reject anything.
-func (m *Model) scheduleFilterApply() tea.Cmd {
-	m.overlay.filterToken++
-	token := m.overlay.filterToken
-
-	return tea.Tick(filterDebounce, func(time.Time) tea.Msg {
-		return filterTickMsg{token: token}
-	})
-}
-
-// applyBufferedFilter applies the in-progress text, but only for the tick the
-// most recent keystroke scheduled, and only while the overlay is still open.
-// The second guard is what makes a tick that outlived Escape harmless: by
-// then the previous filter has already been restored, and re-applying the
-// abandoned buffer over it would undo that silently, a frame later.
-func (m *Model) applyBufferedFilter(token int) {
-	if token != m.overlay.filterToken || m.overlay.kind != overlayFilter {
-		return
-	}
-
-	filter := m.filter
-	filter.Text = m.overlay.buffer
-	m.SetFilter(filter)
-}
-
-// closeFilterOverlay clears the overlay and gives the body back the row the
-// filter line was using. Enter and Escape differ only in which filter they
-// leave behind, so the teardown is shared.
-func (m *Model) closeFilterOverlay() {
-	m.overlay.kind, m.overlay.buffer = overlayNone, ""
-	m.applyLayout(m.layout.Width, m.layout.Height)
-}
-
-// filterTickMsg asks Update (app.go) to apply the in-progress filter text.
-// token pins it to the keystroke that scheduled it, so a tick still in flight
-// when another character arrives applies nothing.
-type filterTickMsg struct{ token int }
 
 // clearStatusMsg asks Update (app.go) to clear the status line's transient
 // message — yank's "copied bv-124" confirmation, today — once
@@ -470,6 +414,22 @@ func (m *Model) yank() tea.Cmd {
 	m.setStatus("copied "+issue.ID, false)
 
 	return tea.Batch(tea.SetClipboard(issue.ID), clearMessageAfter(clipboardMessageTTL, m.status.token))
+}
+
+// openSelected is what enter does, which depends on where it is pressed: on
+// the board it sends the selected card to the list, which is how a card
+// reaches a detail pane the full-screen board has no room for; in the
+// dependency view it re-roots the columns on the highlighted card. Everywhere
+// else it does nothing.
+func (m *Model) openSelected() {
+	switch m.active {
+	case boardSlot:
+		m.openSelectedInList()
+	case depsSlot:
+		if deps, ok := m.views[depsSlot].(*depsview.Model); ok {
+			deps.Descend()
+		}
+	}
 }
 
 // openSelectedInList switches to the list view with the board's selected

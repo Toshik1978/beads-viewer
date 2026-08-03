@@ -119,3 +119,8 @@ func (m *Model) FilterForTest() beads.Filter { return m.filter }
 // exported way to move a selection — every real caller moves it with a
 // keypress, which cannot address a row by id.
 func (m *Model) SelectID(id string) bool { return m.views[m.active].Reveal(id) }
+
+// LayoutForTest exposes the computed geometry, so a test can assert that a
+// view switch actually changed the split rather than only that it changed the
+// active pane.
+func LayoutForTest(m *Model) Layout { return m.layout }

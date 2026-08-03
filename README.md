@@ -90,6 +90,9 @@ rather than shipping.
 | `?` | toggle help |
 | `y` | yank the selected issue id to the clipboard |
 | `tab` | move focus between the list and the detail pane |
+| `/` | edit the free-text filter |
+| `c` | toggle hide-closed |
+| `esc` | clear the filter query |
 
 **Views**
 
@@ -98,15 +101,9 @@ rather than shipping.
 | `1` | list view |
 | `2` | tree view |
 | `3` | board view |
-| `enter` | open the selected card in the list view (board) |
-
-**Filtering**
-
-| Key | Action |
-|---|---|
-| `/` | edit the free-text filter |
-| `c` | toggle hide-closed |
-| `esc` | clear the filter query |
+| `4` | dependency view |
+| `enter` | open the selected card in the list view (board), or re-root the dependency view on the highlighted card |
+| `backspace` | walk back to the previously focused card (dependency view) |
 
 **Navigation**
 

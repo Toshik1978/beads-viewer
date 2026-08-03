@@ -14,6 +14,7 @@ import (
 	"github.com/Toshik1978/beads-viewer/internal/config"
 	"github.com/Toshik1978/beads-viewer/internal/tui"
 	"github.com/Toshik1978/beads-viewer/internal/tui/boardview"
+	"github.com/Toshik1978/beads-viewer/internal/tui/depsview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 	"github.com/Toshik1978/beads-viewer/internal/tui/treeview"
 )
@@ -82,6 +83,13 @@ func (s *helpTestSuite) TestDegenerateSizes() {
 // into a single column inflates it far more — both push the un-placed body
 // past 20 lines, and placeHelp (help.go) clips silently from the tail rather
 // than growing the frame.
+//
+// bv-7pt.6.1 added the dependency view's two bindings (ViewDeps, Back) to
+// Views, which would have pushed the un-placed body to 22 lines had Filtering
+// stayed its own column — helpGroups folded Filtering into Global instead
+// (see that function's own comment), landing both columns at 16 lines and the
+// un-placed body back at exactly 20. The pinned heights below did not move:
+// they are BodyHeight's own real values, not derived from content size.
 func (s *helpTestSuite) TestFitsAtTheHeightsHelpOverlayActuallyPasses() {
 	th := theme.New(config.ThemeDark, theme.BackgroundDark)
 
@@ -99,14 +107,14 @@ func (s *helpTestSuite) TestFitsAtTheHeightsHelpOverlayActuallyPasses() {
 	}
 }
 
-// TestDocumentsTreeAndBoardKeys is I8's drift guard: helpGroups (help.go)
-// keeps its own literal copy of treeview's and boardview's key bindings
-// rather than importing keyActions directly (see that function's own
+// TestDocumentsTreeBoardAndDepsKeys is I8's drift guard: helpGroups (help.go)
+// keeps its own literal copy of treeview's, boardview's and depsview's key
+// bindings rather than importing keyActions directly (see that function's own
 // comment on why), which means nothing caught it automatically if one of
-// those packages added or renamed a key without updating this table. Both
-// packages' HelpKeys expose exactly the strings their real keyActions binds,
-// so this closes that gap: a key present there and absent here now fails a
-// test instead of shipping an overlay that omits it.
+// those packages added or renamed a key without updating this table. All
+// three packages' HelpKeys expose exactly the strings their real keyActions
+// binds, so this closes that gap: a key present there and absent here now
+// fails a test instead of shipping an overlay that omits it.
 //
 // A plain Contains(out, k) is not enough for a single-character key: "c" is
 // a substring of half the descriptions in the overlay regardless of whether
@@ -119,7 +127,7 @@ func (s *helpTestSuite) TestFitsAtTheHeightsHelpOverlayActuallyPasses() {
 // match — which a second draft, checking only k+"  ", also failed: "p" is
 // still a bare substring of "up/k", so a left boundary is needed too, not
 // only a right one.
-func (s *helpTestSuite) TestDocumentsTreeAndBoardKeys() {
+func (s *helpTestSuite) TestDocumentsTreeBoardAndDepsKeys() {
 	out := ansi.Strip(
 		tui.RenderHelpForTest(tui.DefaultKeyMap(), theme.New(config.ThemeDark, theme.BackgroundDark), 100, 40),
 	)
@@ -129,6 +137,9 @@ func (s *helpTestSuite) TestDocumentsTreeAndBoardKeys() {
 	}
 	for _, k := range boardview.HelpKeys() {
 		s.True(keyIsDocumented(out, k), "boardview key %q is bound but undocumented", k)
+	}
+	for _, k := range depsview.HelpKeys() {
+		s.True(keyIsDocumented(out, k), "depsview key %q is bound but undocumented", k)
 	}
 }
 

@@ -76,19 +76,30 @@ func renderHelpBody(keys KeyMap, th theme.Theme, width, height int, note string)
 }
 
 // helpGroups is the overlay's single source of truth for which keys exist.
-// The tree- and board-only bindings below are not KeyMap fields (that would
-// push its 11 past the 20-field struct cap); they are declared here instead,
-// mirroring the literal key strings treeview/nav.go's and boardview.go's own
-// keyActions maps use — a deliberate duplication, since keyActions maps a
-// key to a bound method value, not a label. treeview.HelpKeys and
-// boardview.HelpKeys are what guard it: help_test.go asserts every key they
-// report is named here, so drift now fails a test instead of shipping
-// silently.
+// The tree-, board- and deps-only bindings below are not KeyMap fields (that
+// would push its 16 past the 20-field struct cap); they are declared here
+// instead, mirroring the literal key strings treeview/nav.go's, boardview.go's
+// and depsview/nav.go's own keyActions maps use — a deliberate duplication,
+// since keyActions maps a key to a bound method value, not a label.
+// treeview.HelpKeys, boardview.HelpKeys and depsview.HelpKeys are what guard
+// it: help_test.go asserts every key they report is named here, so drift now
+// fails a test instead of shipping silently.
+//
+// Filtering folded into Global here (bv-7pt.6.1): with a fourth view's two
+// bindings added to Views, keeping Filtering as its own column pushed the
+// overlay's un-placed body past the 20-line budget
+// TestFitsAtTheHeightsHelpOverlayActuallyPasses (help_test.go) pins — its own
+// comment has the arithmetic. Filter, HideClosed and ClearQuery are as global
+// as Quit or Yank in the sense that matters for balancing: none of the three
+// belongs to one view, so folding them in cost nothing semantically.
 func helpGroups(keys KeyMap) []helpGroup {
 	return []helpGroup{
-		{"Global", []key.Binding{keys.Quit, keys.Help, keys.Yank, keys.Focus}},
-		{"Views", []key.Binding{keys.ViewList, keys.ViewTree, keys.ViewBoard, keys.Open}},
-		{"Filtering", []key.Binding{keys.Filter, keys.HideClosed, keys.ClearQuery}},
+		{"Global", []key.Binding{
+			keys.Quit, keys.Help, keys.Yank, keys.Focus, keys.Filter, keys.HideClosed, keys.ClearQuery,
+		}},
+		{"Views", []key.Binding{
+			keys.ViewList, keys.ViewTree, keys.ViewBoard, keys.ViewDeps, keys.Open, keys.Back,
+		}},
 		{"Navigation", []key.Binding{
 			keys.Up, keys.Down,
 			key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("left/h", "collapse / move left")),

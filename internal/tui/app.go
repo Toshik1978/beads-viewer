@@ -16,6 +16,7 @@ import (
 	"github.com/Toshik1978/beads-viewer/internal/beads"
 	"github.com/Toshik1978/beads-viewer/internal/config"
 	"github.com/Toshik1978/beads-viewer/internal/tui/boardview"
+	"github.com/Toshik1978/beads-viewer/internal/tui/depsview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/detail"
 	"github.com/Toshik1978/beads-viewer/internal/tui/listview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
@@ -32,11 +33,15 @@ const backgroundUnknownNote = "Terminal background not detected (normal over SSH
 	"background-agnostic palette.\nSet BV_THEME=light or BV_THEME=dark for a tuned one."
 
 // viewCount is the number of interchangeable panes Model switches between:
-// list, tree and board.
-const viewCount = 3
+// list, tree, board and dependencies.
+const viewCount = 4
 
-// boardSlot is the board view's index within Model.views.
-const boardSlot = 2
+// boardSlot and depsSlot are the two views that render full screen — see
+// showsDetail (layout.go).
+const (
+	boardSlot = 2
+	depsSlot  = 3
+)
 
 // Deps carries everything NewModel needs to build the root model.
 type Deps struct {
@@ -114,6 +119,7 @@ func NewModel(deps Deps) (*Model, error) {
 			listview.New(deps.Theme),
 			treeview.New(deps.Theme),
 			boardview.New(deps.Theme),
+			depsview.New(deps.Theme),
 		},
 		active:   activeIndex(deps.Cfg.View),
 		snapshot: snapshot,
@@ -466,34 +472,4 @@ func (m *Model) helpOverlay() string {
 	}
 
 	return renderHelpBody(m.keys, m.theme, m.layout.Width, m.layout.BodyHeight, note)
-}
-
-// viewKinds pairs each Model.views slot with the config.ViewKind it
-// represents. activeIndex and viewKindAt read it in opposite directions
-// instead of each maintaining its own switch, which is what kept the two
-// from drifting out of sync when board's slot last moved.
-func viewKinds() [viewCount]config.ViewKind {
-	return [viewCount]config.ViewKind{config.ViewList, config.ViewTree, config.ViewBoard}
-}
-
-// activeIndex maps the configured starting view to its slot in Model.views.
-// An unrecognised kind — config.Load validates it, but activeIndex must still
-// be total — falls back to the list, the same as ViewList itself.
-func activeIndex(kind config.ViewKind) int {
-	for i, k := range viewKinds() {
-		if k == kind {
-			return i
-		}
-	}
-
-	return 0
-}
-
-// viewKindAt is activeIndex's inverse, for the status bar.
-func viewKindAt(i int) config.ViewKind {
-	if kinds := viewKinds(); i >= 0 && i < len(kinds) {
-		return kinds[i]
-	}
-
-	return config.ViewList
 }
