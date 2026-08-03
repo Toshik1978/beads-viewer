@@ -68,7 +68,12 @@ type fileConfig struct {
 
 // Load resolves configuration across all four sources.
 func Load(flags Flags) (Config, error) {
-	cfg := Config{Theme: ThemeAuto, View: ViewList}
+	// HideClosed defaults on: a workspace's closed issues are history, and
+	// showing them by default buries the open work the viewer exists to show.
+	// --hide-closed=false, hide_closed: false, BV_HIDE_CLOSED=false and the c
+	// key are all still the way back, and Filter.IsZero() being false at this
+	// default is what keeps the status bar announcing the narrowing.
+	cfg := Config{Theme: ThemeAuto, View: ViewList, HideClosed: true}
 
 	file, err := readFile()
 	if err != nil {

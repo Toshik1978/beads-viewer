@@ -45,7 +45,57 @@ func (s *configTestSuite) TestDefaults() {
 	s.Require().NoError(err)
 	s.Equal(config.ThemeAuto, cfg.Theme)
 	s.Equal(config.ViewList, cfg.View)
-	s.False(cfg.HideClosed)
+	s.True(cfg.HideClosed, "closed issues are noise until asked for; c and "+
+		"--hide-closed=false are the ways back")
+}
+
+func (s *configTestSuite) TestHideClosedDefaultIsOverridableByEveryLayer() {
+	for _, tc := range []struct {
+		name  string
+		setup func()
+		flags config.Flags
+		want  bool
+	}{
+		{
+			name:  "file turns it off",
+			setup: func() { s.writeConfig("hide_closed: false\n") },
+			flags: config.Flags{},
+			want:  false,
+		},
+		{
+			name:  "environment turns it off",
+			setup: func() { s.T().Setenv("BV_HIDE_CLOSED", "false") },
+			flags: config.Flags{},
+			want:  false,
+		},
+		{
+			name:  "flag turns it off",
+			setup: func() {},
+			flags: config.Flags{HideClosed: false, HideClosedSet: true},
+			want:  false,
+		},
+		{
+			name:  "an absent flag does not override the default",
+			setup: func() {},
+			flags: config.Flags{HideClosed: false},
+			want:  true,
+		},
+		{
+			name:  "an absent flag does not override a file that turned it off",
+			setup: func() { s.writeConfig("hide_closed: false\n") },
+			flags: config.Flags{HideClosed: false},
+			want:  false,
+		},
+	} {
+		s.Run(tc.name, func() {
+			s.isolate()
+			tc.setup()
+
+			cfg, err := config.Load(tc.flags)
+			s.Require().NoError(err)
+			s.Equal(tc.want, cfg.HideClosed)
+		})
+	}
 }
 
 func (s *configTestSuite) TestMissingFileIsNotAnError() {
