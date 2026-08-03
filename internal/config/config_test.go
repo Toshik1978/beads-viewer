@@ -83,7 +83,7 @@ func (s *configTestSuite) TestHideClosedDefaultIsOverridableByEveryLayer() {
 		{
 			name:  "an absent flag does not override a file that turned it off",
 			setup: func() { s.writeConfig("hide_closed: false\n") },
-			flags: config.Flags{HideClosed: false},
+			flags: config.Flags{HideClosed: true}, // Deliberately disagree with file: if applyFlags drops the HideClosedSet guard and assigns unconditionally, it would wrongly change the result to true.
 			want:  false,
 		},
 	} {
