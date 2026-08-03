@@ -44,7 +44,7 @@ func (m *Model) Descend() {
 	}
 
 	previous := m.focusID
-	if m.Reveal(entry.ID) && previous != "" {
+	if m.reveal(entry.ID) && previous != "" {
 		m.history = append(m.history, previous)
 	}
 }
@@ -62,7 +62,7 @@ func (m *Model) Back() {
 	for len(m.history) > 0 {
 		last := m.history[len(m.history)-1]
 		m.history = m.history[:len(m.history)-1]
-		if m.Reveal(last) {
+		if m.reveal(last) {
 			return
 		}
 	}

@@ -153,8 +153,10 @@ func (m *Model) Selected() *beads.Issue {
 }
 
 // SelectedID returns the id under the cursor, or "" when the cursor's column
-// is empty. Unlike Selected it is non-empty for a dangling blocker: an id is
-// all there is to say about one, and yanking it is still useful.
+// is empty. Unlike Selected it is non-empty for a dangling blocker, so the
+// pane can still say what the cursor is on — but that id is all there is:
+// tui.yank goes through Selected, not SelectedID, so y on a dangling entry
+// is silently a no-op rather than copying its id.
 func (m *Model) SelectedID() string {
 	return m.selected
 }
@@ -167,12 +169,29 @@ func (m *Model) FocusID() string {
 // Reveal re-roots the view on id and reports success. It satisfies tui.View,
 // and it is why that method is not named SelectByID: the other views move a
 // cursor among rows that already exist, whereas this one rebuilds every
-// column around a new subject.
+// column around a new subject. It is exported here, with the rest of the
+// tui.View surface, rather than beside nav.go's movement methods, for that
+// same reason.
 //
-// This method is exported here, with the rest of the tui.View surface, rather
-// than beside nav.go's movement methods: it changes what the model is about,
-// not where its cursor is.
+// A view switch (keys.go's carrySelection) is the only caller from outside
+// this package, and it always hands Reveal an entry from *outside* this
+// view's own walk — so Reveal clears history here, while nav.go's Descend
+// and Back call the unexported reveal below and leave it alone. Without that
+// split, re-rooting on an id from another view mid-walk would leave
+// backspace retracing hops this visit never took: walk A to C, switch to the
+// list, move to Z, switch back, and backspace would land on B.
 func (m *Model) Reveal(id string) bool {
+	if !m.reveal(id) {
+		return false
+	}
+	m.history = nil
+
+	return true
+}
+
+// reveal is Reveal's mechanics minus the history reset, shared with Descend
+// and Back (nav.go) so a hop within this view's own walk never clears it.
+func (m *Model) reveal(id string) bool {
 	if id == "" || m.snapshot == nil || !m.exists(id) {
 		return false
 	}

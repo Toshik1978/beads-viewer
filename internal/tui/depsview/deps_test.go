@@ -610,6 +610,48 @@ func (s *depsTestSuite) TestEnterPromotesTheHighlightedCardToTheFocus() {
 	s.Equal("waiter", m.FocusID())
 }
 
+// TestRevealFromOutsideClearsHistory pins Minor 4: Reveal is what a view
+// switch calls to land this view on another view's selection — an entry
+// from outside this view's own walk — and must not leave a stale walk
+// behind for backspace to retrace. Before the fix, re-rooting on "z" this
+// way left history exactly as Descend had built it ([a, b]), so Back landed
+// on "b", an issue this visit never passed through.
+func (s *depsTestSuite) TestRevealFromOutsideClearsHistory() {
+	full := beads.NewSnapshot([]beads.Issue{
+		mkIssue("a"),
+		mkIssue("b", withDep(beads.DepBlocks, "a")),
+		mkIssue("c", withDep(beads.DepBlocks, "b")),
+		mkIssue("z"),
+	})
+
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(full)
+	s.Require().True(m.Reveal("a"))
+
+	// Walk a -> b -> c via Descend, exactly as TestBackSkipsAStaleIntermediate-
+	// AndLandsOnTheSurvivor does, so history is [a, b] afterward.
+	m.MoveRight()
+	m.Descend()
+	s.Require().Equal("b", m.FocusID())
+	m.MoveRight()
+	m.Descend()
+	s.Require().Equal("c", m.FocusID())
+
+	// Simulates tui/keys.go's carrySelection landing this view on an
+	// unrelated issue after a view switch — the "press 1, move to Z, press
+	// 4" step from the review.
+	s.Require().True(m.Reveal("z"))
+
+	m.Back()
+
+	s.Equal(
+		"z",
+		m.FocusID(),
+		"an external Reveal must clear history, or backspace retraces a walk this visit never took",
+	)
+}
+
 func (s *depsTestSuite) TestBackWalksTheChainAndThenStops() {
 	m := depsview.New(s.th())
 	m.SetSize(120, 20)
