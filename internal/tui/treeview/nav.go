@@ -139,6 +139,32 @@ func (m *Model) SelectByID(id string) bool {
 	return true
 }
 
+// Reveal moves the cursor to id, expanding whatever ancestors currently hide
+// its row, and reports success. It is SelectByID's counterpart for a caller
+// that has an id but no guarantee the tree is showing it — switching into this
+// view from another one, where the issue under the cursor may sit anywhere in
+// the hierarchy.
+//
+// It only ever expands. m.expandedIDs is persisted to disk on exit
+// (state.go), so collapsing anything here would silently discard a choice the
+// user made in an earlier session in order to satisfy a view switch.
+func (m *Model) Reveal(id string) bool {
+	if m.snapshot == nil || id == "" {
+		return false
+	}
+
+	// Top-down, because a child's row only exists once its parent is open.
+	for _, ancestor := range m.ancestorChain(id) {
+		if node, ok := FindNode(m.roots, ancestor); ok && !node.Expanded {
+			node.Expanded = true
+			m.rememberExpanded(ancestor, true)
+		}
+	}
+	m.refreshRows()
+
+	return m.SelectByID(id)
+}
+
 // SelectedID returns the id of the row under the cursor, or "" when the tree
 // is empty.
 func (m *Model) SelectedID() string {
@@ -235,6 +261,34 @@ func (m *Model) currentNode() (*Node, bool) {
 	}
 
 	return m.rows[m.cursor].node, true
+}
+
+// ancestorChain returns id's ancestors ordered outermost first, so a caller
+// expanding them in order never asks to open a node whose own parent is still
+// closed.
+//
+// The visited set is not defensive programming: .beads/issues.jsonl is
+// hand-editable and bv renders rather than validates, so a parent chain that
+// closes into a cycle is data this view must still open. An unguarded walk
+// would spin forever with the UI frozen. See Snapshot.blockedAncestor
+// (internal/beads/derive.go) for the same guard on the same data.
+func (m *Model) ancestorChain(id string) []string {
+	var chain []string
+	visited := map[string]bool{id: true}
+
+	for current := id; ; {
+		parent, ok := m.snapshot.Parent(current)
+		if !ok || visited[parent.ID] {
+			break
+		}
+		visited[parent.ID] = true
+		chain = append(chain, parent.ID)
+		current = parent.ID
+	}
+
+	slices.Reverse(chain)
+
+	return chain
 }
 
 // rowIndex returns id's position among the current rows, or -1.

@@ -618,3 +618,63 @@ func (s *navTestSuite) TestEveryBoundKeyProducesItsOwnObservableEffect() {
 		s.Equal("root", m.SelectedID(), "ctrl+b must page back up")
 	})
 }
+
+func (s *navTestSuite) TestRevealExpandsCollapsedAncestors() {
+	// root -> c0 -> c0-g0, collapsed to just the root. SelectByID cannot
+	// reach c0-g0 because it has no row; Reveal must create one.
+	m := s.model(1, 2, 10)
+	m.CollapseAll()
+
+	s.False(m.SelectByID("c0-g0"), "precondition: a collapsed grandchild has no row to select")
+
+	s.True(m.Reveal("c0-g0"))
+	s.Equal("c0-g0", m.SelectedID())
+	s.Require().NotNil(m.Selected())
+	s.Equal("c0-g0", m.Selected().ID)
+}
+
+func (s *navTestSuite) TestRevealScrollsTheRowIntoView() {
+	// A pane three rows tall with the target well past the bottom: revealing
+	// must move the viewport, not merely the cursor. This is the half of the
+	// defect the user actually sees — a selected row that is off screen.
+	m := s.model(1, 20, 3)
+	m.CollapseAll()
+
+	s.True(m.Reveal("c19-g0"))
+	s.Contains(ansi.Strip(m.View()), "c19-g0", "the revealed row must be inside the rendered window")
+}
+
+func (s *navTestSuite) TestRevealNeverCollapses() {
+	m := s.model(1, 2, 20)
+	m.ExpandAll()
+
+	s.True(m.Reveal("c0-g0"))
+
+	// c1's subtree was expanded by the user and must stay that way:
+	// expandedIDs is persisted to $XDG_STATE_HOME on exit, so a reveal that
+	// collapsed it would discard a choice made in an earlier session.
+	s.Contains(m.ExportState().Expanded, "c1")
+}
+
+func (s *navTestSuite) TestRevealOnAnAbsentIDLeavesTheCursorAlone() {
+	m := s.model(1, 2, 20)
+	s.Require().True(m.Reveal("c0"))
+
+	s.False(m.Reveal("nope"))
+	s.Equal("c0", m.SelectedID(), "a failed reveal must not move the cursor")
+}
+
+func (s *navTestSuite) TestRevealSurvivesAParentCycle() {
+	// Hand-edited JSONL can express a -> b -> a. bv renders rather than
+	// validates, so this must return rather than hang the UI.
+	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
+	m.SetSize(80, 20)
+	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{child("a", "b"), child("b", "a")}))
+
+	s.NotPanics(func() { _ = m.Reveal("a") })
+}
+
+func (s *navTestSuite) TestRevealBeforeASnapshotIsFalse() {
+	m := treeview.New(theme.New(config.ThemeDark, theme.BackgroundDark))
+	s.False(m.Reveal("anything"))
+}
