@@ -63,22 +63,6 @@ func ids(issues []*beads.Issue) []string {
 	return out
 }
 
-// byID is a test-local stand-in for the exported Snapshot.ByID method I9
-// removed (zero non-test callers): it scans snap.Issues(), which — thanks to
-// NewSnapshot's stable sort — preserves each duplicate id's original input
-// order, so taking the LAST match reproduces ByID's own "later record wins"
-// duplicate-id resolution exactly.
-func byID(snap *beads.Snapshot, id string) (*beads.Issue, bool) {
-	var found *beads.Issue
-	for _, issue := range snap.Issues() {
-		if issue.ID == id {
-			found = issue
-		}
-	}
-
-	return found, found != nil
-}
-
 func (s *snapshotTestSuite) TestChildrenAndParent() {
 	snap := beads.NewSnapshot([]beads.Issue{
 		mkIssue("parent"),
@@ -183,7 +167,7 @@ func (s *snapshotTestSuite) TestConstructionIsIndependentOfTheCallerSlice() {
 	issues[0].Dependencies[0].DependsOnID = "hijacked"
 	*issues[0].ClosedAt = time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	got, ok := byID(snap, "a")
+	got, ok := snap.ByID("a")
 	s.Require().True(ok)
 	s.Equal("a", got.Title)
 	s.Equal("original", got.Labels[0])
@@ -234,7 +218,7 @@ func (s *snapshotTestSuite) TestDuplicateIDsAreNotLost() {
 
 	s.Equal(2, snap.Len(), "both records are kept, not deduplicated away")
 
-	got, ok := byID(snap, "dup")
+	got, ok := snap.ByID("dup")
 	s.Require().True(ok)
 	s.Equal("second", got.Title, "the later record in input order wins the index")
 }
@@ -308,7 +292,7 @@ func (s *snapshotTestSuite) TestDuplicateIDsDoNotCrossContaminateTheHierarchy() 
 
 	// byID resolves "dup" to c (last in input order); Parent(id) must agree
 	// with that same record's own parentless status, not b's.
-	resolved, ok := byID(snap, "dup")
+	resolved, ok := snap.ByID("dup")
 	s.Require().True(ok)
 	s.Equal("c", resolved.Owner)
 
@@ -478,7 +462,7 @@ func (s *snapshotTestSuite) TestEmptySnapshot() {
 	s.Empty(snap.Issues())
 	s.Empty(snap.Roots())
 	s.Empty(snap.Children("anything"))
-	_, ok := byID(snap, "anything")
+	_, ok := snap.ByID("anything")
 	s.False(ok)
 }
 
