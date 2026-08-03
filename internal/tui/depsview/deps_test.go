@@ -168,6 +168,59 @@ func (s *depsTestSuite) TestRelatedColumnTagsEachEdgeKind() {
 	s.Equal(depsview.RelationDiscovered, byID["spike"])
 }
 
+func (s *depsTestSuite) TestFocusedColumnAgreesWithTheRestOnADuplicateID() {
+	// Snapshot.byID (and every accessor built on it — Blockers, Dependents,
+	// BlockedAncestor, BlockedByOpenChild, RelatedTo) resolves a duplicate id
+	// to the LATER record in input order. The focused column must show that
+	// same record, or a reader would see one record's title in the middle
+	// column while the columns around it are driven by a different same-id
+	// record's dependencies.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("dup", func(i *beads.Issue) { i.Title = "first" }),
+		mkIssue("dup", func(i *beads.Issue) { i.Title = "second" }, withDep(beads.DepBlocks, "b")),
+		mkIssue("b"),
+	})
+
+	cols := depsview.Columns(snap, "dup")
+
+	s.Require().Len(cols[1].Entries, 1)
+	s.Equal("second", cols[1].Entries[0].Issue.Title,
+		"the focused column must resolve the duplicate id the same way byID does")
+	s.Equal([]string{"b"}, entryIDs(cols[0]),
+		"blocked-by is computed against the same later record the focused column now shows")
+}
+
+func (s *depsTestSuite) TestRelatedColumnPrefersDiscoveredFromOnAContestedPair() {
+	for _, tc := range []struct {
+		name          string
+		focusDeclares beads.DepType
+		otherDeclares beads.DepType
+	}{
+		{
+			name:          "focus says related, other says discovered-from",
+			focusDeclares: beads.DepRelated,
+			otherDeclares: beads.DepDiscoveredFrom,
+		},
+		{
+			name:          "focus says discovered-from, other says related",
+			focusDeclares: beads.DepDiscoveredFrom,
+			otherDeclares: beads.DepRelated,
+		},
+	} {
+		s.Run(tc.name, func() {
+			snap := beads.NewSnapshot([]beads.Issue{
+				mkIssue("focus", withDep(tc.focusDeclares, "other")),
+				mkIssue("other", withDep(tc.otherDeclares, "focus")),
+			})
+
+			entries := depsview.Columns(snap, "focus")[3].Entries
+			s.Require().Len(entries, 1)
+			s.Equal(depsview.RelationDiscovered, entries[0].Relation,
+				"discovered-from is the more specific claim and wins a contested pair")
+		})
+	}
+}
+
 func (s *depsTestSuite) TestNoColumnContainsTheFocusedIssue() {
 	// A self-edge is expressible in hand-edited JSONL; the focused issue must
 	// appear once, in the middle column, and nowhere else.

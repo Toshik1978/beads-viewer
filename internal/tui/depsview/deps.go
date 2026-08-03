@@ -108,18 +108,22 @@ func blockedByEntries(snap *beads.Snapshot, focusID string) []Entry {
 // focusEntries is the middle column: the subject itself, or nothing when the
 // active filter has removed it from this snapshot.
 func focusEntries(snap *beads.Snapshot, focusID string) []Entry {
-	for _, issue := range snap.Issues() {
-		if issue.ID == focusID {
-			return []Entry{{Issue: issue, ID: issue.ID, Relation: RelationFocus}}
-		}
+	issue, ok := issueByID(snap, focusID)
+	if !ok {
+		return nil
 	}
 
-	return nil
+	return []Entry{{Issue: issue, ID: issue.ID, Relation: RelationFocus}}
 }
 
 // relatedEntries tags each of RelatedTo's results with the edge kind that
 // produced it. RelatedTo answers which issues are connected but not how, and
 // "related" and "discovered from" mean different things to a reader.
+//
+// When a pair declares both — one side says related, the other says
+// discovered-from — discovered-from wins regardless of which side is checked
+// first: it is the more specific claim about provenance, where "related" is
+// only the fallback for when nothing more specific is known.
 func relatedEntries(snap *beads.Snapshot, focusID string) []Entry {
 	focus, ok := issueByID(snap, focusID)
 
@@ -165,17 +169,30 @@ func withoutID(entries []Entry, id string) []Entry {
 // issueByID finds one issue in the snapshot. Snapshot exposes no ByID
 // accessor — it was removed as having zero non-test callers — so this scans,
 // which is acceptable here: it runs once per frame, not once per entry.
+//
+// It takes the LAST match, deliberately reproducing Snapshot's internal byID
+// index, which resolves a duplicate id to the later record in input order.
+// Every other accessor this file calls (Blockers, DanglingBlockers,
+// BlockedAncestor, BlockedByOpenChild, Dependents, RelatedTo) is computed
+// against that same later record, so taking the first match here would show
+// the focused column a different record than the one the other three columns
+// are actually about. Scanning Issues() and keeping the last match reproduces
+// that resolution exactly, because NewSnapshot's sort is stable: two records
+// sharing an id tie on priority, creation time and id, so their relative
+// input order survives the sort untouched.
 func issueByID(snap *beads.Snapshot, id string) (*beads.Issue, bool) {
 	if id == "" {
 		return nil, false
 	}
+
+	var found *beads.Issue
 	for _, issue := range snap.Issues() {
 		if issue.ID == id {
-			return issue, true
+			found = issue
 		}
 	}
 
-	return nil, false
+	return found, found != nil
 }
 
 // edgeKind reports the type of the edge issue declares on target, or "" when
