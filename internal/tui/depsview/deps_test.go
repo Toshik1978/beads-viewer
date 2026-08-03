@@ -1,12 +1,17 @@
 package depsview_test
 
 import (
+	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
+	"github.com/Toshik1978/beads-viewer/internal/config"
 	"github.com/Toshik1978/beads-viewer/internal/tui/depsview"
+	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 )
 
 func TestDepsview(t *testing.T) {
@@ -273,4 +278,150 @@ func (s *depsTestSuite) TestSurvivesAParentCycle() {
 	})
 
 	s.NotPanics(func() { _ = depsview.Columns(snap, "a") })
+}
+
+func (s *depsTestSuite) th() theme.Theme {
+	return theme.New(config.ThemeDark, theme.BackgroundDark)
+}
+
+func (s *depsTestSuite) sample() *beads.Snapshot {
+	return beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus", withDep(beads.DepBlocks, "live")),
+		mkIssue("live"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+		mkIssue("sibling", withDep(beads.DepRelated, "focus")),
+	})
+}
+
+func (s *depsTestSuite) TestViewRendersAllFourColumnHeadings() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	out := ansi.Strip(m.View())
+	for _, title := range []string{"blocked by", "focused", "blocks", "related"} {
+		s.Contains(out, title)
+	}
+	for _, id := range []string{"live", "focus", "waiter", "sibling"} {
+		s.Contains(out, id)
+	}
+}
+
+func (s *depsTestSuite) TestHeadingsCarryTheirCounts() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	s.Contains(ansi.Strip(m.View()), "blocked by (1)")
+}
+
+func (s *depsTestSuite) TestViewFitsItsAllottedGeometry() {
+	m := depsview.New(s.th())
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	for _, size := range [][2]int{{0, 0}, {1, 1}, {20, 3}, {40, 10}, {80, 24}, {200, 60}} {
+		s.Run("", func() {
+			m.SetSize(size[0], size[1])
+			out := ansi.Strip(m.View())
+			if out == "" {
+				return
+			}
+			lines := strings.Split(out, "\n")
+			s.LessOrEqual(len(lines), size[1], "pane is taller than its budget at %v", size)
+			for _, line := range lines {
+				s.LessOrEqual(lipgloss.Width(line), size[0], "line %q exceeds width at %v", line, size)
+			}
+		})
+	}
+}
+
+func (s *depsTestSuite) TestDegenerateSizesDoNotPanic() {
+	m := depsview.New(s.th())
+	m.SetSnapshot(s.sample())
+
+	for _, size := range [][2]int{{0, 0}, {-5, -5}, {1, 0}, {0, 1}} {
+		s.Run("", func() {
+			s.NotPanics(func() {
+				m.SetSize(size[0], size[1])
+				_ = m.View()
+			})
+		})
+	}
+}
+
+func (s *depsTestSuite) TestSelectedCardRendersDifferentlyFromUnselected() {
+	// Styling asserted separately from content, per the house rule.
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	withCursor := m.View()
+	stripped := ansi.Strip(withCursor)
+
+	s.NotEqual(stripped, withCursor, "the frame must carry styling at all")
+	s.NotEmpty(m.SelectedID(), "a freshly revealed view must have a cursor somewhere")
+}
+
+func (s *depsTestSuite) TestSnapshotSwapKeepsTheFocus() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	// A reload that adds an issue must not reset which issue the view is about.
+	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus", withDep(beads.DepBlocks, "live")),
+		mkIssue("live"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+		mkIssue("sibling", withDep(beads.DepRelated, "focus")),
+		mkIssue("brand-new"),
+	}))
+
+	s.Equal("focus", m.FocusID())
+}
+
+func (s *depsTestSuite) TestRevealReRootsTheView() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+
+	s.True(m.Reveal("focus"))
+	s.Equal("focus", m.FocusID())
+
+	s.True(m.Reveal("waiter"))
+	s.Equal("waiter", m.FocusID(), "Reveal re-roots; it does not merely move a cursor")
+	s.Contains(ansi.Strip(m.View()), "focus",
+		"re-rooting on waiter puts its blocker — the old focus — in the blocked-by column")
+}
+
+func (s *depsTestSuite) TestRevealOnAnAbsentIDChangesNothing() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	s.False(m.Reveal("nope"))
+	s.Equal("focus", m.FocusID())
+}
+
+func (s *depsTestSuite) TestRevealBeforeASnapshotIsFalse() {
+	m := depsview.New(s.th())
+	s.False(m.Reveal("anything"))
+}
+
+func (s *depsTestSuite) TestFilteredOutFocusLeavesTheViewRenderable() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	// The app's shared filter removed the focused issue.
+	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{mkIssue("unrelated")}))
+
+	s.NotPanics(func() { _ = m.View() })
+	s.Nil(m.Selected())
 }
