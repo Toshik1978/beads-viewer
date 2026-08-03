@@ -304,6 +304,17 @@ func (s *snapshotTestSuite) TestDependentsExcludesNonBlockingEdges() {
 	s.Empty(snap.Dependents("target"))
 }
 
+func (s *snapshotTestSuite) TestDependentsDeduplicates() {
+	// An issue can declare two different blocking-type edges (blocks and
+	// waits-for) to the same target; it must appear once, not once per edge.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("target"),
+		mkIssue("a", withDep(beads.DepBlocks, "target"), withDep(beads.DepWaitsFor, "target")),
+	})
+
+	s.Equal([]string{"a"}, ids(snap.Dependents("target")))
+}
+
 func (s *snapshotTestSuite) TestRelatedToCoversBothDirections() {
 	snap := beads.NewSnapshot([]beads.Issue{
 		mkIssue("subject", withDep(beads.DepRelated, "outbound")),
@@ -383,6 +394,43 @@ func (s *snapshotTestSuite) TestBothAccessorsReturnCanonicalOrder() {
 	got := snap.Dependents("target")
 	s.Require().Len(got, 2)
 	s.Equal("hi", got[0].ID, "higher priority sorts first, as Snapshot.Issues does")
+}
+
+func (s *snapshotTestSuite) TestRelatedToReturnsCanonicalOrder() {
+	// Mirrors TestBothAccessorsReturnCanonicalOrder's check for Dependents:
+	// ids() sorts before comparing, so it cannot catch an ordering
+	// regression, and the acceptance criterion is that both accessors return
+	// canonical order.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("target"),
+		mkIssue("lo", withDep(beads.DepRelated, "target"), func(i *beads.Issue) { i.Priority = beads.PriorityLow }),
+		mkIssue("hi", withDep(beads.DepRelated, "target"), func(i *beads.Issue) { i.Priority = beads.PriorityHigh }),
+	})
+
+	got := snap.RelatedTo("target")
+	s.Require().Len(got, 2)
+	s.Equal("hi", got[0].ID, "higher priority sorts first, as Snapshot.Issues does")
+}
+
+func (s *snapshotTestSuite) TestASelfParentingIssueIsARootRatherThanInvisible() {
+	// An issue whose only parent-child edge points at itself is malformed
+	// data expressible in hand-edited JSONL. bv renders rather than
+	// validates, so it must surface rather than vanish: before the self-edge
+	// guard in indexEdge, this issue resolved to its own child, so it was
+	// excluded from Roots() (it had a parent) while never appearing in any
+	// other issue's Children() (the only edge pointing at it was its own) —
+	// present in Issues() but unreachable from any Roots()->Children() walk.
+	// The guard makes it its own root instead: shown, not hidden.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("self", withParent("self")),
+	})
+
+	roots := snap.Roots()
+	s.Require().Len(roots, 1)
+	s.Equal("self", roots[0].ID)
+	s.Empty(snap.Children("self"))
+	_, ok := snap.Parent("self")
+	s.False(ok)
 }
 
 func (s *snapshotTestSuite) TestEmptySnapshot() {

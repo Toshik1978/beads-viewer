@@ -172,11 +172,16 @@ func (s *Snapshot) indexHierarchy() {
 	}
 
 	// Both kinds of edge can be declared between the same pair, and the
-	// both-directions rule above can also file the same issue twice. Compact
-	// once here rather than in RelatedTo, which the dependency view calls on
-	// every frame.
+	// both-directions rule above can also file the same issue twice into
+	// relatives. A single issue can likewise declare two different
+	// blocking-type edges (blocks and waits-for, say) to the same target,
+	// filing it twice into dependents. Compact both once here rather than in
+	// the accessors, which the dependency view calls on every frame.
 	for id, issues := range s.relatives {
 		s.relatives[id] = dedupeIssues(issues)
+	}
+	for id, issues := range s.dependents {
+		s.dependents[id] = dedupeIssues(issues)
 	}
 }
 
@@ -184,10 +189,20 @@ func (s *Snapshot) indexHierarchy() {
 // to. Split out of indexHierarchy's loop so that function stays inside the
 // statement and complexity limits as the edge kinds grow.
 //
-// Self-edges are dropped on both branches: A depends-on A is expressible in
-// hand-edited JSONL, and bv renders rather than validates, so it must be
-// tolerated — but listing an issue among its own blockers or relatives would
-// be a rendering bug, not fidelity to the data.
+// Self-edges are dropped before dispatch, for every branch including
+// parent-child: A depends-on A is expressible in hand-edited JSONL, and bv
+// renders rather than validates, so it must be tolerated. For the
+// blocking/relatives branches, keeping it would list an issue among its own
+// blockers or relatives — a rendering bug, not fidelity to the data. For
+// parent-child specifically the stakes are higher than cosmetic: without this
+// guard, an issue that declares itself its own parent would occupy its own
+// slot in ownParent, so it would never hit indexHierarchy's "no parent" case
+// and be added to Roots() — yet it would also never appear in any other
+// issue's Children(), since the only edge pointing at it is its own. That
+// issue would sit in Issues() but be unreachable from any Roots()->Children()
+// walk: present in the data, invisible in the tree. Dropping the self-edge
+// instead makes it surface as its own root, which is what "render rather
+// than validate" requires for malformed data — shown, not hidden.
 func (s *Snapshot) indexEdge(issue *Issue, dep Dependency, ownParent map[*Issue]string) {
 	if dep.DependsOnID == issue.ID {
 		return
