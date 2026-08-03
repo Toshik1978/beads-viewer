@@ -87,6 +87,15 @@ func (m *Model) MoveDown() {
 // MoveLeft moves the cursor to the nearest populated column to the left, and
 // stays put when there is none. Three of the four columns are routinely
 // empty, so parking on one would leave the cursor with nothing to act on.
+//
+// The row resets to 0 rather than carrying over, deliberately diverging from
+// boardview's MoveLeft/MoveRight, which preserve row across a column change.
+// boardview's columns are homogeneous swimlanes of the same kind of thing, so
+// row N staying under the cursor as you cross lanes is meaningful; this
+// view's four columns are unrelated lists — blockers, the focus, dependents,
+// related issues — so row N of "blocked by" says nothing about row N of
+// "related", and carrying the index across would land the cursor on an
+// arbitrary card rather than a corresponding one.
 func (m *Model) MoveLeft() {
 	m.col = m.nextPopulated(m.col, -1)
 	m.row = 0
@@ -94,7 +103,8 @@ func (m *Model) MoveLeft() {
 	m.syncSelected()
 }
 
-// MoveRight is MoveLeft's mirror.
+// MoveRight is MoveLeft's mirror; see it for why the row resets rather than
+// carrying over, unlike boardview's equivalent.
 func (m *Model) MoveRight() {
 	m.col = m.nextPopulated(m.col, 1)
 	m.row = 0

@@ -567,6 +567,106 @@ func (s *depsTestSuite) TestBackWalksTheChainAndThenStops() {
 	s.Equal("focus", m.FocusID(), "an exhausted history is a no-op, not a reset")
 }
 
+func (s *depsTestSuite) TestBackSkipsAStaleIntermediateAndLandsOnTheSurvivor() {
+	// A three-issue chain: focus -> waiter -> waiter2, each blocking the
+	// previous, so Descend can walk it via the "blocks" column at every step.
+	full := beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+		mkIssue("waiter2", withDep(beads.DepBlocks, "waiter")),
+	})
+
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(full)
+	s.Require().True(m.Reveal("focus"))
+
+	m.MoveRight()
+	m.Descend()
+	s.Require().Equal("waiter", m.FocusID())
+
+	m.MoveRight()
+	m.Descend()
+	s.Require().Equal("waiter2", m.FocusID(), "history is now [focus, waiter], most recent last")
+
+	// The shared filter (or a reload) has since dropped "waiter" — the top
+	// of the history stack, and the very next id Back would try — while
+	// "focus", one hop further down, survives untouched.
+	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("waiter2", withDep(beads.DepBlocks, "focus")),
+	}))
+
+	m.Back()
+
+	s.Equal("focus", m.FocusID(),
+		"a stale history entry must be popped and skipped, not stop the walk")
+}
+
+func (s *depsTestSuite) TestBackExhaustsAnAllStaleHistoryWithoutPanicking() {
+	full := beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+		mkIssue("waiter2", withDep(beads.DepBlocks, "waiter")),
+	})
+
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(full)
+	s.Require().True(m.Reveal("focus"))
+
+	m.MoveRight()
+	m.Descend()
+	m.MoveRight()
+	m.Descend()
+	s.Require().Equal("waiter2", m.FocusID(), "history is now [focus, waiter]")
+
+	// A reload drops every id the history remembers, leaving only the
+	// current focus behind.
+	m.SetSnapshot(beads.NewSnapshot([]beads.Issue{mkIssue("waiter2")}))
+
+	s.NotPanics(m.Back)
+	s.Equal("waiter2", m.FocusID(), "an exhausted, all-stale history leaves the focus untouched")
+}
+
+func (s *depsTestSuite) TestMovingColumnsResetsTheRowRatherThanPreservingIt() {
+	// "blocked by" and "focused" both read the focus issue's own identity
+	// (Blockers needs its Dependencies; focusEntries needs ByID to resolve
+	// it), so dropping "focus" itself empties both — while "blocks" and
+	// "related" are reverse indexes keyed by the id string and survive,
+	// putting two multi-entry columns directly adjacent once the empty pair
+	// is skipped. That is what lets a single MoveRight cross from one
+	// multi-row column straight into another, with nothing in between to
+	// reset the row incidentally via clamp.
+	full := beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("w1", withDep(beads.DepBlocks, "focus")),
+		mkIssue("w2", withDep(beads.DepBlocks, "focus")),
+		mkIssue("r1", withDep(beads.DepRelated, "focus")),
+		mkIssue("r2", withDep(beads.DepRelated, "focus")),
+	})
+
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(full)
+	s.Require().True(m.Reveal("focus"))
+
+	narrow := beads.NewSnapshot([]beads.Issue{
+		mkIssue("w1", withDep(beads.DepBlocks, "focus")),
+		mkIssue("w2", withDep(beads.DepBlocks, "focus")),
+		mkIssue("r1", withDep(beads.DepRelated, "focus")),
+		mkIssue("r2", withDep(beads.DepRelated, "focus")),
+	})
+	m.SetSnapshot(narrow)
+	relatedFirst := depsview.Columns(narrow, "focus")[3].Entries[0].ID
+
+	m.MoveRight() // "blocked by" and "focused" are both empty; lands on "blocks", row 0.
+	m.MoveDown()  // row 1 within "blocks".
+	m.MoveRight() // "related": must land on row 0, not carry row 1 over from "blocks".
+
+	s.Equal(relatedFirst, m.SelectedID(), "a column change must reset the row, not preserve it")
+}
+
 func (s *depsTestSuite) TestDescendOnADanglingEntryIsANoOp() {
 	// A dangling blocker names an id this workspace has no issue for; there is
 	// nothing to re-root on, and re-rooting on it would render four empty
@@ -605,23 +705,6 @@ func (s *depsTestSuite) TestMovementSkipsEmptyColumns() {
 
 	m.MoveLeft()
 	s.Equal("focus", m.SelectedID(), "the empty blocked-by column is skipped, not parked on")
-}
-
-func (s *depsTestSuite) TestMovementNeverLeavesAnInvalidCursor() {
-	m := depsview.New(s.th())
-	m.SetSize(120, 20)
-	m.SetSnapshot(s.sample())
-	s.Require().True(m.Reveal("focus"))
-
-	// A long mixed sequence must never panic and must always leave the cursor
-	// on a cell that exists or on an empty column with no selection.
-	moves := []func(){m.MoveUp, m.MoveDown, m.MoveLeft, m.MoveRight, m.JumpToTop, m.JumpToBottom}
-	for i := range 200 {
-		s.NotPanics(moves[i%len(moves)])
-	}
-	if id := m.SelectedID(); id != "" {
-		s.NotNil(m.Selected(), "a non-empty SelectedID with no Selected can only be a dangling entry")
-	}
 }
 
 func (s *depsTestSuite) TestUpdateRoutesKeysToMovement() {

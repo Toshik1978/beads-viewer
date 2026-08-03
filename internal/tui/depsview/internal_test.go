@@ -3,11 +3,10 @@ package depsview
 // This file holds a white-box suite that reaches into Model's unexported
 // fields directly, mirroring treeview's own internal_test.go (and, further
 // back, tui's) for the same reason: some invariants cannot be observed
-// through the exported API alone. Here specifically, there is no
-// cursor-movement method yet — Update is still a stub, and the next task
-// adds it — so positioning the cursor on an interior row to test the
-// window's own cursor-visibility guarantee has no path through Model's
-// exported surface at all.
+// through the exported API alone — positioning the cursor on an interior row,
+// or reading m.col/m.row back after a move, has no path through Model's
+// exported surface, since every exported accessor already bounds-checks the
+// cursor before use.
 
 import (
 	"fmt"
@@ -62,4 +61,53 @@ func (s *WhiteBoxSuite) TestEntryWindowKeepsAnInteriorCursorVisible() {
 
 	out := ansi.Strip(m.View())
 	s.Contains(out, cursorID, "the cursor's own entry must appear in the rendered frame")
+}
+
+// TestMovementNeverLeavesAnInvalidCursor pins the real postcondition every
+// movement method must hold, not merely "doesn't panic": after any sequence
+// of moves, m.col must index an existing column, and m.row must either index
+// that column's entries or be 0 in an empty column. It lives here, not in
+// deps_test.go, because every accessor the external package can reach
+// (Selected, SelectedID) already bounds-checks the cursor before use — a
+// movement method that forgot to call clamp() at all could not be observed
+// from outside, since nothing external ever indexes m.columns[m.col] without
+// its own guard.
+func (s *WhiteBoxSuite) TestMovementNeverLeavesAnInvalidCursor() {
+	// "gone" is a dangling blocker (an id with no issue behind it, still a
+	// valid row) and "related" stays empty throughout — the two cases the
+	// old, externally observable version of this test could not distinguish,
+	// since sample() (deps_test.go) has neither.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{
+			ID: "focus", Title: "focus", Status: beads.StatusOpen, IssueType: beads.TypeTask,
+			Dependencies: []beads.Dependency{{IssueID: "focus", DependsOnID: "gone", Type: beads.DepBlocks}},
+		},
+		{
+			ID: "live", Title: "live", Status: beads.StatusOpen, IssueType: beads.TypeTask,
+			Dependencies: []beads.Dependency{{IssueID: "live", DependsOnID: "focus", Type: beads.DepBlocks}},
+		},
+	})
+
+	m := New(theme.New(config.ThemeDark, theme.BackgroundDark))
+	m.SetSize(120, 20)
+	m.SetSnapshot(snap)
+	s.Require().True(m.Reveal("focus"))
+
+	moves := []func(){m.MoveUp, m.MoveDown, m.MoveLeft, m.MoveRight, m.JumpToTop, m.JumpToBottom}
+	for i := range 200 {
+		moves[i%len(moves)]()
+
+		s.Require().True(m.col >= 0 && m.col < len(m.columns), "col %d out of range after move %d", m.col, i)
+
+		entries := m.columns[m.col].Entries
+		if len(entries) == 0 {
+			s.Require().Equal(0, m.row, "an empty column must park row at 0, move %d", i)
+
+			continue
+		}
+		s.Require().True(m.row >= 0 && m.row < len(entries), "row %d out of range for column %d, move %d",
+			m.row, m.col, i)
+	}
+
+	s.NotPanics(func() { _ = m.View() }, "the cursor the loop leaves behind must still be renderable")
 }
