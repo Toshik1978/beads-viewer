@@ -1,15 +1,15 @@
 package depsview
 
 // This file turns deps.go's columns into a bubbletea view: geometry, column
-// fitting and rendering, plus the two-dimensional cursor's own bookkeeping.
-// deps.go stays pure column construction; a later task adds what a keypress
-// does to the cursor and the focus.
+// fitting and rendering, plus the two-dimensional cursor's own bookkeeping and
+// Reveal, which changes what the model is about rather than where its cursor
+// is. deps.go stays pure column construction; nav.go is what a keypress does
+// to the cursor and the focus.
 
 import (
 	"fmt"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
@@ -38,10 +38,9 @@ const (
 // Model is the dependency view: bv's fourth pane. It satisfies tui.View.
 //
 // focusID and the cursor are different things. focusID is which issue the
-// columns are built around; col and row are which card is highlighted. A
-// later task's enter promotes the highlighted card to the focus, which is
-// what makes the view walkable — and a re-rooting history is what makes that
-// walk reversible.
+// columns are built around; col and row are which card is highlighted.
+// nav.go's Descend promotes the highlighted card to the focus, which is what
+// makes the view walkable — and history is what makes that walk reversible.
 //
 // There is no filter field: every Filter dimension is the app's, applied once
 // upstream and arriving here as a narrower snapshot.
@@ -58,6 +57,11 @@ type Model struct {
 	col      int
 	row      int
 	selected string
+	// history is the stack of focus ids Descend has walked away from, most
+	// recent last, so Back can retrace the walk. Nothing but nav.go reads or
+	// writes it — it stayed off Model entirely until there were keys that
+	// needed it, since an unused field fails golangci-lint's unused check.
+	history []string
 }
 
 // New builds an empty dependency view; SetSize, SetSnapshot and Reveal fill it
@@ -84,13 +88,6 @@ func (m *Model) SetSize(width, height int) {
 func (m *Model) SetSnapshot(snap *beads.Snapshot) {
 	m.snapshot = snap
 	m.rebuild()
-}
-
-// Update satisfies tui.View. It ignores every message for now; a later task
-// replaces this body with a key-action dispatch once there are keys to
-// dispatch.
-func (m *Model) Update(tea.Msg) tea.Cmd {
-	return nil
 }
 
 // View renders the four columns side by side.
@@ -144,8 +141,8 @@ func (m *Model) FocusID() string {
 // column around a new subject.
 //
 // This method is exported here, with the rest of the tui.View surface, rather
-// than beside the movement methods a later task adds: it changes what the
-// model is about, not where its cursor is.
+// than beside nav.go's movement methods: it changes what the model is about,
+// not where its cursor is.
 func (m *Model) Reveal(id string) bool {
 	if id == "" || m.snapshot == nil || !m.exists(id) {
 		return false

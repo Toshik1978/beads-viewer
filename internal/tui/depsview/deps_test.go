@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/suite"
@@ -532,4 +533,114 @@ func (s *depsTestSuite) TestFilteredOutFocusLeavesTheViewRenderable() {
 
 	s.NotPanics(func() { _ = m.View() })
 	s.Nil(m.Selected())
+}
+
+func (s *depsTestSuite) TestEnterPromotesTheHighlightedCardToTheFocus() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	// Cursor onto the "blocks" column, whose sole entry is waiter.
+	m.MoveRight()
+	s.Require().Equal("waiter", m.SelectedID())
+
+	m.Descend()
+
+	s.Equal("waiter", m.FocusID())
+}
+
+func (s *depsTestSuite) TestBackWalksTheChainAndThenStops() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	m.MoveRight()
+	m.Descend()
+	s.Require().Equal("waiter", m.FocusID())
+
+	m.Back()
+	s.Equal("focus", m.FocusID())
+
+	m.Back()
+	s.Equal("focus", m.FocusID(), "an exhausted history is a no-op, not a reset")
+}
+
+func (s *depsTestSuite) TestDescendOnADanglingEntryIsANoOp() {
+	// A dangling blocker names an id this workspace has no issue for; there is
+	// nothing to re-root on, and re-rooting on it would render four empty
+	// columns with no way back except backspace.
+	snap := beads.NewSnapshot([]beads.Issue{mkIssue("focus", withDep(beads.DepBlocks, "gone"))})
+
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(snap)
+	s.Require().True(m.Reveal("focus"))
+
+	m.MoveLeft()
+	s.Require().Equal("gone", m.SelectedID())
+
+	m.Descend()
+	s.Equal("focus", m.FocusID())
+}
+
+func (s *depsTestSuite) TestMovementSkipsEmptyColumns() {
+	// Only "focused" and "blocks" are populated here, so one MoveRight from
+	// the focus column must land on blocks, skipping nothing, and MoveLeft
+	// from there must come back rather than parking on empty "blocked by".
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+	})
+
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(snap)
+	s.Require().True(m.Reveal("focus"))
+	s.Require().Equal("focus", m.SelectedID())
+
+	m.MoveRight()
+	s.Equal("waiter", m.SelectedID())
+
+	m.MoveLeft()
+	s.Equal("focus", m.SelectedID(), "the empty blocked-by column is skipped, not parked on")
+}
+
+func (s *depsTestSuite) TestMovementNeverLeavesAnInvalidCursor() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	// A long mixed sequence must never panic and must always leave the cursor
+	// on a cell that exists or on an empty column with no selection.
+	moves := []func(){m.MoveUp, m.MoveDown, m.MoveLeft, m.MoveRight, m.JumpToTop, m.JumpToBottom}
+	for i := range 200 {
+		s.NotPanics(moves[i%len(moves)])
+	}
+	if id := m.SelectedID(); id != "" {
+		s.NotNil(m.Selected(), "a non-empty SelectedID with no Selected can only be a dangling entry")
+	}
+}
+
+func (s *depsTestSuite) TestUpdateRoutesKeysToMovement() {
+	m := depsview.New(s.th())
+	m.SetSize(120, 20)
+	m.SetSnapshot(s.sample())
+	s.Require().True(m.Reveal("focus"))
+
+	before := m.SelectedID()
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	s.NotEqual(before, m.SelectedID(), "l must move the cursor right")
+}
+
+func (s *depsTestSuite) TestHelpKeysCoversEveryBinding() {
+	keys := depsview.HelpKeys()
+	for _, want := range []string{
+		"up", "k", "down", "j", "left", "h", "right", "l", "enter",
+		"backspace",
+	} {
+		s.Contains(keys, want)
+	}
 }
