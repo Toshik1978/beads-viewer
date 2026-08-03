@@ -85,9 +85,38 @@ func (m *Model) SetSize(width, height int) {
 // SetSnapshot rebuilds the columns from snap, keeping the same focus. A
 // reload must not change which issue the view is about — only what it says
 // about it.
+//
+// A view that has never had a focus is the exception, since nothing else
+// seeds one: Reveal only ever runs from a view switch (keys.go), so
+// `--view deps`/`view: deps`/BV_VIEW=deps all reach this view through
+// NewModel's own applyFilter call with focusID still "" and no switch having
+// happened, which used to render four permanently empty columns. Adopting
+// snap's first issue in canonical order — Issues()'s own order, the one
+// listview.SetSnapshot opens on — is what makes starting on deps and
+// starting on list then pressing 4 agree on where the cursor lands.
 func (m *Model) SetSnapshot(snap *beads.Snapshot) {
 	m.snapshot = snap
+	if m.focusID == "" {
+		if id, ok := firstIssueID(snap); ok {
+			m.focusID = id
+			m.col, m.row = focusColumn, 0
+		}
+	}
 	m.rebuild()
+}
+
+// firstIssueID returns snap's first issue's id in canonical order, or "" and
+// false when snap is nil or empty.
+func firstIssueID(snap *beads.Snapshot) (string, bool) {
+	if snap == nil {
+		return "", false
+	}
+	issues := snap.Issues()
+	if len(issues) == 0 {
+		return "", false
+	}
+
+	return issues[0].ID, true
 }
 
 // View renders the four columns side by side.

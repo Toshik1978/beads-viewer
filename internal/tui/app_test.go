@@ -309,6 +309,35 @@ func (s *appTestSuite) TestTheDependencyViewTakesTheWholeBody() {
 	s.Equal(0, tui.LayoutForTest(m).DetailWidth)
 }
 
+// TestOpeningDirectlyOnTheDependencyViewSeedsAFocus is Important 1's guard.
+// carrySelection only ever reveals an id on a view *switch* (keys.go), so a
+// Model that opens straight onto the dependency view — `bv --view deps`,
+// `view: deps` and BV_VIEW=deps all construct one this way, through
+// NewModel's own applyFilter call — never had a switch to run Reveal from.
+// Before the fix this rendered "blocked by (0) | focused (0) | blocks (0) |
+// related (0)" with SelectedID() == "", confirmed empirically against this
+// exact fixture: two issues and a WindowSizeMsg, nothing else.
+func (s *appTestSuite) TestOpeningDirectlyOnTheDependencyViewSeedsAFocus() {
+	m, err := tui.NewModel(tui.Deps{
+		Log:   slog.New(slog.DiscardHandler),
+		Cfg:   config.Config{Theme: config.ThemeDark, View: config.ViewDeps},
+		Theme: theme.New(config.ThemeDark, theme.BackgroundDark),
+		Snapshot: beads.NewSnapshot([]beads.Issue{
+			mkIssue("focus"),
+			mkIssue("waiter", withDep(beads.DepBlocks, "focus")),
+		}),
+		Reload: func() tea.Msg { return nil },
+	})
+	s.Require().NoError(err)
+
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	s.Equal(config.ViewDeps, tui.ViewKindForTest(m))
+	s.NotEmpty(m.SelectedID(), "the view must adopt a focus on its own, not wait for a switch that never comes")
+	s.Contains(ansi.Strip(tui.ActivePaneForTest(m)), "focused (1)",
+		"the middle column must actually hold the subject, not read as an empty pane naming nothing")
+}
+
 func (s *appTestSuite) TestReloadPreservesSelectionByID() {
 	m := s.newModel([]beads.Issue{
 		{ID: "bv-1", Title: "One", Status: beads.StatusOpen},
