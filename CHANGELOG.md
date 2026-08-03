@@ -9,6 +9,139 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.3.0 — 2026-08-03
+
+A fourth view: a dependency board that answers, for one issue, what is
+holding it up and what is waiting on it. Alongside it, a selection that
+follows you from pane to pane instead of resetting.
+
+**This release changes a default.** Closed issues are now hidden unless you
+ask for them. `c` still toggles it, and `--hide-closed=false`, `hide_closed:
+false` or `BV_HIDE_CLOSED=false` start a session with them shown. No key was
+reassigned; two were added and one gained a second meaning, all listed at the
+end.
+
+### Closed issues are hidden by default
+
+- A `bv` started with no flags, no environment and no config file opens with
+  terminal-status issues hidden, in every view. One filter feeds all four
+  panes, so this is one narrowing rather than four agreeing ones.
+- The status bar says so on every frame, without a keypress: `(N hidden)`
+  beside the view name and `hide closed` among the filter criteria. That is
+  the only signal that issues are missing from what you are looking at, and
+  it is what keeps `c` discoverable for someone who never read these notes.
+- Deletion markers are unaffected — they were already hidden and still are,
+  independently of this toggle. The hidden count subtracts them, so it
+  reports what hide-closed actually hides rather than inflating itself with
+  records the toggle never governed.
+
+### The dependency view
+
+- `4` from any view opens it on the issue you were reading. Four columns:
+  what blocks it, the issue itself, what it blocks, and what it is merely
+  related to. It runs full screen, as the board does — four columns squeezed
+  into a split terminal would each be narrower than the board's own minimum
+  column width.
+- The left column answers more than one question, because "what is blocking
+  this" has more than one answer. A card there can be an ordinary unfinished
+  dependency; an id this workspace has no issue for, marked *not in
+  workspace*; an ancestor marked *via parent*, when the thing holding you up
+  is something a parent is waiting on rather than anything about this issue;
+  or, for an epic, a still-open child. Each is labelled, because each needs a
+  different response — and because an issue's own dependency rows are only
+  one of the four, a view that listed just those would say "nothing is
+  blocking this" about an issue the status bar counts as blocked.
+- `enter` makes the highlighted card the new subject and rebuilds the columns
+  around it, so a chain of blockers can be walked one hop at a time.
+  `backspace` walks back. Leaving with `1`, `2` or `3` takes the issue you
+  ended on with you.
+- The last column carries `related` and `discovered-from` edges in both
+  directions, each card tagged with the kind that produced it. Direction is a
+  fact about which record holds the row, not about which issue is the useful
+  context.
+- Parent and child edges are deliberately absent. That hierarchy is the tree
+  view's subject, and repeating it here would make the outer columns mean two
+  things at once.
+
+### Views open where you left off
+
+- Switching views puts the cursor on the issue you were reading, in every
+  direction. Each view used to keep its own cursor, so a switch landed
+  wherever that pane was last left — often the top, or a row the tree
+  restored from a previous session.
+- The tree expands whatever collapsed ancestors are hiding the row, since a
+  row that does not exist cannot be selected. It only ever expands: tree
+  expansion is persisted between runs, so collapsing something here to
+  satisfy a view switch would discard a choice you made in an earlier
+  session.
+- The dependency view re-roots rather than moving a cursor — that is what
+  makes `4` land on the right subject in the first place.
+
+### Smaller things
+
+- An issue that declares itself its own parent now appears as a root instead
+  of disappearing. It was previously excluded from the roots and reachable
+  only as its own child, which meant it never appeared in the tree at all
+  despite being in the file. `bv` renders rather than validates, so malformed
+  data should be visible, not hidden.
+- The detail pane's "Blocks" section reads an index instead of scanning every
+  issue in the workspace on every frame. Same issues, same order; it also no
+  longer lists an issue twice when that issue declares two blocking edges on
+  the same target.
+
+### Keys that changed
+
+| Key | Before | Now |
+|---|---|---|
+| `4` | unbound | dependency view |
+| `backspace` | unbound | back to the previous subject (deps) |
+| `enter` | open in list (board) | open in list (board), re-root (deps) |
+
+`?` now lists the filtering keys under **Global** rather than in a section of
+their own. `/`, `c` and `esc` are unchanged — only where they are printed
+moved, so the overlay still fits an 80×24 terminal now that the views section
+carries two more bindings.
+
+### Features
+
+- feat(config): hide closed issues by default ([52a601e](https://github.com/Toshik1978/beads-viewer/commit/52a601e281664bef7e42d784d4f3d404248e16d2))
+- feat(treeview): reveal an id by expanding the ancestors that hide it ([94edadb](https://github.com/Toshik1978/beads-viewer/commit/94edadb5a53224a6aace44cac308a5339da67a23))
+- feat(beads): index dependents and relatives on the snapshot ([b29a99e](https://github.com/Toshik1978/beads-viewer/commit/b29a99e382300f11d7dc974e7d7b286de27ef67c))
+- feat(tui): carry the selected issue across a view switch ([7e75baa](https://github.com/Toshik1978/beads-viewer/commit/7e75baa75ca0fdb08e4cd042ac0dac3549c59aba))
+- feat(depsview): build the four dependency columns ([5ef26c5](https://github.com/Toshik1978/beads-viewer/commit/5ef26c5d2d0d0c387f8a848c0273c05461c99a1d))
+- feat(depsview): render the dependency columns ([d074547](https://github.com/Toshik1978/beads-viewer/commit/d0745478371324bfdc0675003792c4cd87772b9c))
+- feat(depsview): navigate, re-root and walk back ([1313911](https://github.com/Toshik1978/beads-viewer/commit/131391102203764963c71753929b06ed4dd27845))
+- feat(tui): add the dependency view as the fourth pane ([fd35dc1](https://github.com/Toshik1978/beads-viewer/commit/fd35dc1d48151653dae3fed95acde23ca9dab4b5))
+
+### Bug Fixes
+
+- fix(config): make HideClosed override test discriminate the regression ([bf6c4fb](https://github.com/Toshik1978/beads-viewer/commit/bf6c4fbf9902b13a67bbad365a783ad51e58f40f))
+- fix(beads): dedupe Dependents and pin the self-parenting root case ([90c45d3](https://github.com/Toshik1978/beads-viewer/commit/90c45d370e57dc2787de124ad4e220b0faf398c5))
+- fix(depsview): resolve duplicate ids like Snapshot's byID, pin discovered-from precedence ([9b81737](https://github.com/Toshik1978/beads-viewer/commit/9b817376c570326c7c2e0c2ba4c21ceebce82ef6))
+- fix(depsview): resolve duplicate ids via Snapshot.ByID, not a sorted-slice scan ([83f34a0](https://github.com/Toshik1978/beads-viewer/commit/83f34a032a79ff67a76a3ba7e3f8e45643915d3f))
+- fix(depsview): charge each entry's real row cost, not a fixed one ([bb05204](https://github.com/Toshik1978/beads-viewer/commit/bb05204a110e353cf2bd6388fe059907bfb30658))
+- fix(depsview): make the window's start agree with its own cost model ([bf2b8c6](https://github.com/Toshik1978/beads-viewer/commit/bf2b8c617cbee5a43134b32019d52f4dde0cc8aa))
+- fix(depsview): seed a focus so the view never opens on nothing ([5c3d01b](https://github.com/Toshik1978/beads-viewer/commit/5c3d01b42db6c4e2e3b7db1f91ecd00e1f112c49))
+- fix(depsview): name a focus that has left the snapshot, and dedupe blocked-by ([9f8876f](https://github.com/Toshik1978/beads-viewer/commit/9f8876f00e591ccc1c01ec84ba2a522a68c8e1b1))
+- fix(depsview): clear history only on a re-root from outside the view ([672fb3f](https://github.com/Toshik1978/beads-viewer/commit/672fb3fbeec45230578101e393645568bbb9acc0))
+- fix(depsview): count only entries hidden below the window ([97f9941](https://github.com/Toshik1978/beads-viewer/commit/97f9941e1d16e14766479ccdb2e35bf977a1072a))
+
+### Others
+
+- docs(changelog): separate versions with a rule, and add a preamble ([0e7ae5b](https://github.com/Toshik1978/beads-viewer/commit/0e7ae5b7ea2a2726fa5854a74f89f4efd7490ccb))
+- docs(beads): spec and plan for the dependency board epic ([6fa139c](https://github.com/Toshik1978/beads-viewer/commit/6fa139cab77ede8ddebb1e7c7c62c04d0a5e426f))
+- docs(beads): resolve two pre-flight conflicts in the epic plan ([c1b0f32](https://github.com/Toshik1978/beads-viewer/commit/c1b0f3246a8636c070265f0925522aa638fe20c3))
+- refactor(tui): extract card rendering into cardfmt ([ef96135](https://github.com/Toshik1978/beads-viewer/commit/ef961359f2f7a9e084ac2747a020671f1939f710))
+- docs(cardfmt): fix stale renderCard reference left by the card move ([7b968cd](https://github.com/Toshik1978/beads-viewer/commit/7b968cdbab08022ea64f7d3f69f19d3f8127c847))
+- refactor(detail): read the blocks section from the reverse index ([30fa552](https://github.com/Toshik1978/beads-viewer/commit/30fa552a79c4d3e876fdfcdeba57b72ba1416cae))
+- docs(beads): correct the epic's line-cap target from 7,600 to 8,200 ([fb5365d](https://github.com/Toshik1978/beads-viewer/commit/fb5365dc56ee41eae6c037b1306c7e87de66f0c2))
+- docs(beads): give task 6.1 the keys.go split it now needs ([c174e9c](https://github.com/Toshik1978/beads-viewer/commit/c174e9c7cfb8f31602c27aa5182eaa85ad32ea4a))
+- docs(beads): set the epic's final line cap at 8,600 ([14e34b2](https://github.com/Toshik1978/beads-viewer/commit/14e34b2d889c48ad4b621b13be4c53ce5726a10e))
+- docs: document the dependency view and the hide-closed default ([dd254c3](https://github.com/Toshik1978/beads-viewer/commit/dd254c3e427593c6937bc4cf2ea75187de75ac4b))
+- docs: catch up the View interface docs and deps-view nuances ([97ade2b](https://github.com/Toshik1978/beads-viewer/commit/97ade2bad2741d5a70315b0ec7b945f2166ffedf))
+
+---
+
 ## v1.2.0 — 2026-08-01
 
 Tree rows now read the way list rows have since v1.1.0, and the board's `left`
