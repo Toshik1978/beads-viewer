@@ -26,7 +26,7 @@ import (
 )
 
 // minCardContentWidth is the fewest content cells (border excluded) a card
-// is worth drawing bordered. Below it, renderCard falls back to a single
+// is worth drawing bordered. Below it, Render falls back to a single
 // unbordered, truncated line rather than asking lipgloss for a negative
 // content width.
 const minCardContentWidth = 1

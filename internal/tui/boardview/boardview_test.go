@@ -299,7 +299,7 @@ func (s *boardTestSuite) TestCycleSwimLanePreservesSelection() {
 // to hand the single column m.width unreserved, then append a strip on top
 // of it, overflowing the very invariant this test exists to pin — verified
 // broken at widths 1 through 9 before the fix. "wide" is dropped from that
-// narrow range's own assertion: below minColumnWidth, renderCard's fallback
+// narrow range's own assertion: below minColumnWidth, cardfmt.Render's fallback
 // draws one truncated line rather than a full card, so whether that specific
 // substring survives is no longer a meaningful signal, only the width bound
 // is.
