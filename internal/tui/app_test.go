@@ -189,13 +189,17 @@ func (s *appTestSuite) TestSwitchingViewsCarriesTheSelection() {
 		{name: "list to board", key: "3", want: config.ViewBoard},
 	} {
 		s.Run(tc.name, func() {
-			// A parent with a child, so the tree case exercises Reveal's
-			// ancestor expansion rather than merely its cursor move: with
-			// everything below the root collapsed, "kid" has no tree row
-			// until Reveal makes one.
+			// Three levels, not two: treeview.buildNode only defaults a
+			// depth-0 node to Expanded (tree.go), so a direct child of a
+			// root already has a visible row on the very first SetSnapshot
+			// — Reveal would have nothing to do and a bare SelectByID would
+			// pass this test identically. "mid" sits at depth 1 and
+			// defaults collapsed, which genuinely hides "kid"'s row until
+			// Reveal expands it.
 			m := s.newModel([]beads.Issue{
 				mkIssue("root"),
-				mkIssue("kid", withParent("root")),
+				mkIssue("mid", withParent("root")),
+				mkIssue("kid", withParent("mid")),
 				mkIssue("other"),
 			})
 			m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})

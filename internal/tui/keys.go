@@ -291,6 +291,11 @@ func (m *Model) handleViewSwitchKey(msg tea.KeyPressMsg) bool {
 // legitimately absent there (filtered out, or a board card whose column the
 // filter emptied), and there is nothing the user could do differently.
 func (m *Model) carrySelection(from, to int) {
+	// Pressing the active view's own key must not re-reveal. Today that would
+	// be a harmless no-op — every view keeps its own cursor already — but a
+	// fourth view is coming whose Reveal re-roots the entire pane rather than
+	// moving a cursor, and there a self-reveal would visibly reset the user's
+	// position. This guard exists before there is anything for it to guard.
 	if from == to {
 		return
 	}
