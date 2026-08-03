@@ -18,6 +18,7 @@ import (
 
 func TestDepsview(t *testing.T) {
 	suite.Run(t, new(depsTestSuite))
+	suite.Run(t, new(depsview.WhiteBoxSuite))
 }
 
 type depsTestSuite struct {

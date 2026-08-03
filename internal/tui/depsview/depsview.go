@@ -198,11 +198,13 @@ func (m *Model) renderColumn(col Column, width int, focused bool) string {
 // overflow does.
 //
 // When every entry fits, the whole column renders and nothing is reserved.
-// Otherwise a row is set aside for the "+N more" notice, and window's
-// cursor-following step (sized by the smallest possible per-entry cost, so
-// it never picks a start too tight to hold the cursor) decides where the
-// visible run begins; fitCount then charges each entry's real cost from
-// there.
+// Otherwise a row is set aside for the "+N more" notice: windowStart and
+// fitCount both walk real per-entry costs, backwards from the cursor and
+// forwards from the chosen start respectively, which is what makes "the
+// cursor is inside [start, end)" true by construction rather than by an
+// assumption that every entry costs the same (an earlier version of this
+// function paired a cost-aware fitCount with a uniform-cost start and could
+// place the cursor outside its own window — see bv-7pt.5.2 fix round 2).
 func (m *Model) entryWindow(entries []Entry, avail int, focused bool) (start, end int) {
 	if totalRows(entries) <= avail {
 		return 0, len(entries)
@@ -213,8 +215,7 @@ func (m *Model) entryWindow(entries []Entry, avail int, focused bool) (start, en
 		return 0, 0
 	}
 
-	maxFit := budget / cardfmt.Height(false)
-	start, _ = window(m.row, maxFit, len(entries), focused)
+	start = windowStart(entries, m.row, budget, focused)
 	end = start + fitCount(entries[start:], budget)
 
 	return start, end
@@ -390,24 +391,38 @@ func (m *Model) exists(id string) bool {
 	return ok
 }
 
-// window picks a starting index that keeps the cursor visible within a run
-// of roughly maxFit entries, mirroring boardview's columnWindow scoped to a
-// single column. maxFit is sized from the smallest possible per-entry cost
-// (see entryWindow), so it is a generous estimate rather than an exact
-// count; fitCount is what turns start into a real, budget-accurate end.
-func window(cursorRow, maxFit, total int, focused bool) (start, end int) {
-	if maxFit <= 0 {
-		return 0, 0
+// windowStart picks the first index of the visible window so the cursor
+// stays inside it, mirroring boardview's columnWindow scoped to a single
+// column. Entry costs vary — a dangling id is one line, a labelled card
+// cardfmt.Height(false)+1 — so this walks backwards from the cursor
+// accumulating each entry's real cost, the same rule fitCount applies
+// forwards, rather than assuming a uniform cost per entry: a uniform
+// estimate on this side paired with real costs on fitCount's side is what
+// let the two halves disagree about where the cursor actually landed.
+//
+// When the column isn't focused, when the cursor is already the first
+// entry, or when starting at 0 already reaches the cursor within budget
+// (fitCount from 0 gets at least that far), the window starts at 0 and
+// nothing needs to scroll.
+func windowStart(entries []Entry, cursorRow, budget int, focused bool) int {
+	if !focused || cursorRow <= 0 || cursorRow >= len(entries) {
+		return 0
+	}
+	if fitCount(entries, budget) > cursorRow {
+		return 0
 	}
 
-	start = 0
-	if focused && cursorRow >= maxFit {
-		start = cursorRow - maxFit + 1
+	used, start := 0, cursorRow+1
+	for start > 0 {
+		cost := entryRows(entries[start-1])
+		if used+cost > budget {
+			break
+		}
+		used += cost
+		start--
 	}
-	start = min(max(start, 0), max(total-maxFit, 0))
-	end = min(start+maxFit, total)
 
-	return start, end
+	return start
 }
 
 // fitCount is how many of entries, in order, fit within budget rows of
