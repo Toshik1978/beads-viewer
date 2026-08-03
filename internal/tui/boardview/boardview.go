@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
+	"github.com/Toshik1978/beads-viewer/internal/tui/cardfmt"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 	"github.com/Toshik1978/beads-viewer/internal/tui/uitext"
 )
@@ -423,7 +424,7 @@ func (m *Model) renderColumn(col Column, width int, focused bool) string {
 		return strings.Join(lines[:min(len(lines), max(m.height, 0))], "\n")
 	}
 
-	height := cardHeight(m.expanded)
+	height := cardfmt.Height(m.expanded)
 	maxFit := avail / height
 	if len(col.Issues) > maxFit {
 		// Cards will not all fit: reserve one line for the "+N more"
@@ -436,7 +437,8 @@ func (m *Model) renderColumn(col Column, width int, focused bool) string {
 
 	for i := start; i < end; i++ {
 		selected := focused && i == m.row
-		lines = append(lines, renderCard(m.theme, m.snapshot, col.Issues[i], width, selected, m.expanded))
+		lines = append(lines, cardfmt.Render(m.theme, m.snapshot, col.Issues[i], width, selected,
+			m.expanded))
 	}
 
 	if hidden := len(col.Issues) - (end - start); hidden > 0 {
