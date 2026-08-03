@@ -3,6 +3,7 @@ package beads_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/stretchr/testify/suite"
@@ -40,6 +41,26 @@ func withParent(parentID string) func(*beads.Issue) {
 
 func withLabels(labels ...string) func(*beads.Issue) {
 	return func(i *beads.Issue) { i.Labels = labels }
+}
+
+func withDep(t beads.DepType, targets ...string) func(*beads.Issue) {
+	return func(i *beads.Issue) {
+		for _, target := range targets {
+			i.Dependencies = append(i.Dependencies, beads.Dependency{
+				IssueID: i.ID, DependsOnID: target, Type: t,
+			})
+		}
+	}
+}
+
+func ids(issues []*beads.Issue) []string {
+	out := make([]string, len(issues))
+	for i, issue := range issues {
+		out[i] = issue.ID
+	}
+	slices.Sort(out)
+
+	return out
 }
 
 // byID is a test-local stand-in for the exported Snapshot.ByID method I9
@@ -255,6 +276,113 @@ func (s *snapshotTestSuite) TestDuplicateIDsDoNotCrossContaminateTheHierarchy() 
 
 	_, ok = snap.Parent("dup")
 	s.False(ok, "Parent(id) must agree with byID's own duplicate-id resolution")
+}
+
+func (s *snapshotTestSuite) TestDependentsNamesEveryIssueBlockedByThisOne() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("target"),
+		mkIssue("a", withDep(beads.DepBlocks, "target")),
+		mkIssue("b", withDep(beads.DepWaitsFor, "target")),
+		mkIssue("c", withDep(beads.DepConditionalBlocks, "target")),
+		mkIssue("unrelated"),
+	})
+
+	s.Equal([]string{"a", "b", "c"}, ids(snap.Dependents("target")))
+}
+
+func (s *snapshotTestSuite) TestDependentsExcludesNonBlockingEdges() {
+	// parent-child is the one that matters: br's own blocker query filters on
+	// ('blocks','conditional-blocks','waits-for') only, and including
+	// parent-child here would report every child of an epic as blocked by it.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("target"),
+		mkIssue("kid", withParent("target")),
+		mkIssue("rel", withDep(beads.DepRelated, "target")),
+		mkIssue("disc", withDep(beads.DepDiscoveredFrom, "target")),
+	})
+
+	s.Empty(snap.Dependents("target"))
+}
+
+func (s *snapshotTestSuite) TestRelatedToCoversBothDirections() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("subject", withDep(beads.DepRelated, "outbound")),
+		mkIssue("outbound"),
+		mkIssue("inbound", withDep(beads.DepRelated, "subject")),
+		mkIssue("discovered", withDep(beads.DepDiscoveredFrom, "subject")),
+		mkIssue("unrelated"),
+	})
+
+	s.Equal([]string{"discovered", "inbound", "outbound"}, ids(snap.RelatedTo("subject")))
+}
+
+func (s *snapshotTestSuite) TestRelatedToDeduplicates() {
+	// Hand-edited JSONL can declare both kinds between the same pair; the
+	// issue must appear once.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("subject"),
+		mkIssue("both",
+			withDep(beads.DepRelated, "subject"),
+			withDep(beads.DepDiscoveredFrom, "subject"),
+		),
+	})
+
+	s.Equal([]string{"both"}, ids(snap.RelatedTo("subject")))
+}
+
+func (s *snapshotTestSuite) TestNeitherAccessorReturnsTheSubject() {
+	// A self-edge is expressible in hand-edited JSONL and bv renders rather
+	// than validates, so it must be tolerated — and dropped.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("self",
+			withDep(beads.DepBlocks, "self"),
+			withDep(beads.DepRelated, "self"),
+		),
+	})
+
+	s.Empty(snap.Dependents("self"))
+	s.Empty(snap.RelatedTo("self"))
+}
+
+func (s *snapshotTestSuite) TestBothAccessorsAreSafeForAnUnknownID() {
+	snap := beads.NewSnapshot([]beads.Issue{mkIssue("a")})
+
+	s.Empty(snap.Dependents("nope"))
+	s.Empty(snap.RelatedTo("nope"))
+}
+
+func (s *snapshotTestSuite) TestBothAccessorsClone() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("target"),
+		mkIssue("a", withDep(beads.DepBlocks, "target")),
+		mkIssue("r", withDep(beads.DepRelated, "target")),
+	})
+
+	got := snap.Dependents("target")
+	s.Require().Len(got, 1)
+	got[0] = nil
+	s.Require().Len(snap.Dependents("target"), 1)
+	s.NotNil(snap.Dependents("target")[0], "the accessor must clone, or a caller can corrupt the snapshot")
+
+	rel := snap.RelatedTo("target")
+	s.Require().Len(rel, 1)
+	rel[0] = nil
+	s.NotNil(snap.RelatedTo("target")[0])
+}
+
+func (s *snapshotTestSuite) TestBothAccessorsReturnCanonicalOrder() {
+	// sortIssues orders by priority, then newest first, then id. Both
+	// accessors must reflect that, so the dependency view's columns are
+	// stable across runs rather than reflecting map iteration order.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("target"),
+		mkIssue("lo", withDep(beads.DepBlocks, "target"), func(i *beads.Issue) { i.Priority = beads.PriorityLow }),
+		mkIssue("hi", withDep(beads.DepBlocks, "target"), func(i *beads.Issue) { i.Priority = beads.PriorityHigh }),
+	})
+
+	got := snap.Dependents("target")
+	s.Require().Len(got, 2)
+	s.Equal("hi", got[0].ID, "higher priority sorts first, as Snapshot.Issues does")
 }
 
 func (s *snapshotTestSuite) TestEmptySnapshot() {
