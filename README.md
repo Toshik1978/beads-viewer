@@ -112,8 +112,8 @@ rather than shipping.
 |---|---|
 | `up` / `k` | up |
 | `down` / `j` | down |
-| `left` / `h` | collapse the current node, or move to the previous column (board) |
-| `right` / `l` | expand the current node, or move to the next column (board) |
+| `left` / `h` | collapse the current node, or move to the previous column (board, deps) |
+| `right` / `l` | expand the current node, or move to the next column (board, deps) |
 | `home` / `g` | jump to top |
 | `end` / `G` | jump to bottom |
 | `space` | toggle expand (tree node, or a board card's detail) |
@@ -145,6 +145,12 @@ an id this workspace has no issue for, labelled *not in workspace*; an ancestor
 labelled *via parent*, when the thing holding you up is something a parent is
 waiting on rather than anything about this issue; or, for an epic, a still-open
 child. Each is labelled, because they need different responses.
+
+This is more than a labelling nicety: an issue's own dependency rows are only
+one of the ways it can be blocked, so a column that listed only those rows
+would say "nothing is blocking this" about an issue the status bar still
+counts as blocked. The four kinds exist, and are labelled distinctly, because
+an empty blockers list here does not mean unblocked.
 
 `enter` makes the highlighted card the new subject and rebuilds the columns
 around it, so a chain of blockers can be walked one hop at a time. `backspace`

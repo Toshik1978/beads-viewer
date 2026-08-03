@@ -66,11 +66,21 @@ crossed the wrong way.
 ## Views are peers behind an interface, not fields on the root model
 
 The `View` interface (`internal/tui/view.go`) is deliberately narrow:
-`SetSize`, `SetSnapshot`, `SetTheme`, `Update`, `View`, `Selected`. The list,
-tree, board and dependency views each implement it in their own package, and
-the root `Model` holds them as `views [viewCount]View` — an array of the
-interface, not four named struct fields, let alone four sets of inlined
-state.
+`SetSize`, `SetSnapshot`, `SetTheme`, `Update`, `View`, `Selected`, `Reveal`.
+The list, tree, board and dependency views each implement it in their own
+package, and the root `Model` holds them as `views [viewCount]View` — an
+array of the interface, not four named struct fields, let alone four sets of
+inlined state.
+
+`Reveal` is the one method this epic added to that list, and it earns its
+place there: it is what makes a view switch land on the issue the user was
+already looking at, rather than resetting the selection every time. It is
+deliberately not named `SelectByID` — the method `listview` and `boardview`
+already exported for moving a cursor among rows that already exist — because
+satisfying it can require changing *what is visible* before anything can be
+selected: the tree view expands whichever collapsed ancestors are hiding the
+row, and the dependency view re-roots its four columns on the new subject
+outright.
 
 The reason is concrete, not stylistic: the terminal application this project
 replaced kept every view's state as fields directly on one root `Model` —
