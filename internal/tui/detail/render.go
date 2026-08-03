@@ -212,16 +212,12 @@ func describeIssue(issue *beads.Issue) string {
 	)
 }
 
-// renderBlocks names every issue this one blocks. Snapshot has no direct
-// index for "what does id block" — only for the reverse, Blockers — so this
-// scans the dependency edges other issues declare against this one.
+// renderBlocks names every issue this one blocks, from Snapshot's reverse
+// dependency index. It used to answer the question by scanning every issue in
+// the workspace and testing each one's edges — an O(n) walk, plus a clone of
+// the whole issue slice, on every frame this pane rendered.
 func (m *Model) renderBlocks() string {
-	var blocked []*beads.Issue
-	for _, other := range m.snapshot.Issues() {
-		if other.ID != m.issue.ID && dependsOn(other, m.issue.ID) {
-			blocked = append(blocked, other)
-		}
-	}
+	blocked := m.snapshot.Dependents(m.issue.ID)
 	if len(blocked) == 0 {
 		return ""
 	}
@@ -265,17 +261,6 @@ func (m *Model) renderChildren() string {
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-// dependsOn reports whether issue declares a blocking dependency on id.
-func dependsOn(issue *beads.Issue, id string) bool {
-	for _, dep := range issue.Dependencies {
-		if dep.Type.Blocks() && dep.DependsOnID == id {
-			return true
-		}
-	}
-
-	return false
 }
 
 // wrapLine wraps s to width using ansi.Wordwrap — which breaks cleanly on

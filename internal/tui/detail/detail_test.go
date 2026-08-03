@@ -380,6 +380,69 @@ func (s *detailTestSuite) TestListsALiveBlockerAndAnInheritedOneTogether() {
 	s.Contains(out, "parent chain")
 }
 
+// TestBlocksSectionExcludesNonBlockingEdges pins that only blocking-type
+// edges populate Blocks — a parent-child edge never blocks (DepType.Blocks
+// filters it out), so kid belongs under Children and must not also appear
+// under Blocks, and a merely related edge must not appear at all.
+func (s *detailTestSuite) TestBlocksSectionExcludesNonBlockingEdges() {
+	issues := []beads.Issue{
+		{ID: "bv-1", Title: "the target", Status: beads.StatusOpen},
+		{
+			ID: "bv-2", Title: "a child", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "bv-2", DependsOnID: "bv-1", Type: beads.DepParentChild},
+			},
+		},
+		{
+			ID: "bv-3", Title: "merely related", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "bv-3", DependsOnID: "bv-1", Type: beads.DepRelated},
+			},
+		},
+	}
+	snap := beads.NewSnapshot(issues)
+
+	m := s.newModel(70, 40)
+	m.SetIssue(findIssue(snap, "bv-1"), snap)
+
+	out := m.View()
+	s.NotContains(out, "Blocks", "neither a parent-child nor a related edge blocks")
+	s.Contains(out, "Children", "the child still belongs to its own section")
+}
+
+// TestBlocksSectionIsAbsentWithNoDependents pins that the section is omitted
+// entirely rather than rendered empty when nothing depends on the issue.
+func (s *detailTestSuite) TestBlocksSectionIsAbsentWithNoDependents() {
+	snap := beads.NewSnapshot([]beads.Issue{{ID: "bv-1", Title: "lonely", Status: beads.StatusOpen}})
+
+	m := s.newModel(70, 40)
+	m.SetIssue(findIssue(snap, "bv-1"), snap)
+
+	s.NotContains(m.View(), "Blocks")
+}
+
+// TestBlocksSectionDoesNotListTheIssueItself pins that a self-edge does not
+// list the issue under its own Blocks section. A self-edge is expressible in
+// hand-edited JSONL, and bv renders rather than validates. The old scan
+// excluded it with an explicit ID comparison; the index excludes it at build
+// time. Same outcome, different mechanism — which is exactly what this pins.
+func (s *detailTestSuite) TestBlocksSectionDoesNotListTheIssueItself() {
+	issues := []beads.Issue{
+		{
+			ID: "bv-1", Title: "self-blocking", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "bv-1", DependsOnID: "bv-1", Type: beads.DepBlocks},
+			},
+		},
+	}
+	snap := beads.NewSnapshot(issues)
+
+	m := s.newModel(70, 40)
+	m.SetIssue(findIssue(snap, "bv-1"), snap)
+
+	s.NotContains(m.View(), "Blocks")
+}
+
 func (s *detailTestSuite) TestNilIssueRendersAPlaceholder() {
 	m := s.newModel(60, 30)
 	m.SetIssue(nil, beads.NewSnapshot(nil))
