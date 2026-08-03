@@ -171,25 +171,12 @@ func (m *Model) columnWidth() int {
 	return max(avail/columnCount, 0)
 }
 
-// renderColumn renders one column's heading and as many cards as fit in
+// renderColumn renders one column's heading and as many entries as fit in
 // m.height, appending a "+N more" line when some had to be dropped.
 func (m *Model) renderColumn(col Column, width int, focused bool) string {
 	lines := []string{m.headingLine(col, width, focused)}
 
-	avail := m.height - headerLines
-	cardRows := cardfmt.Height(false)
-	if avail < cardRows {
-		return strings.Join(lines, "\n")
-	}
-
-	maxFit := avail / cardRows
-	if len(col.Entries) > maxFit {
-		// Reserve a row for the "+N more" line below, or this column runs one
-		// line past the budget every other column is held to.
-		maxFit = max((avail-1)/cardRows, 0)
-	}
-	start, end := window(m.row, maxFit, len(col.Entries), focused)
-
+	start, end := m.entryWindow(col.Entries, m.height-headerLines, focused)
 	for i := start; i < end; i++ {
 		lines = append(lines, m.renderEntry(col.Entries[i], width, focused && i == m.row))
 	}
@@ -198,6 +185,39 @@ func (m *Model) renderColumn(col Column, width int, focused bool) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// entryWindow picks the slice of a column's entries to render, honouring
+// each entry's real row cost (entryRows) rather than assuming every entry
+// costs the same. A "blocked by" or "related" column mixes single-line
+// dangling ids, plain cards and labelled cards (one line taller), and a
+// budget that assumed one fixed height per entry could believe a column fit
+// when its actual, labelled cost ran past avail — clip's tail-chop still
+// held the pane's outer geometry, but silently, by cutting into whichever
+// column ran long instead of reporting a "+N more" the way every other
+// overflow does.
+//
+// When every entry fits, the whole column renders and nothing is reserved.
+// Otherwise a row is set aside for the "+N more" notice, and window's
+// cursor-following step (sized by the smallest possible per-entry cost, so
+// it never picks a start too tight to hold the cursor) decides where the
+// visible run begins; fitCount then charges each entry's real cost from
+// there.
+func (m *Model) entryWindow(entries []Entry, avail int, focused bool) (start, end int) {
+	if totalRows(entries) <= avail {
+		return 0, len(entries)
+	}
+
+	budget := avail - 1
+	if budget <= 0 {
+		return 0, 0
+	}
+
+	maxFit := budget / cardfmt.Height(false)
+	start, _ = window(m.row, maxFit, len(entries), focused)
+	end = start + fitCount(entries[start:], budget)
+
+	return start, end
 }
 
 // headingLine renders a column's title and entry count, padded to width so an
@@ -229,7 +249,7 @@ func (m *Model) renderEntry(e Entry, width int, selected bool) string {
 	}
 
 	card := cardfmt.Render(m.theme, m.snapshot, e.Issue, width, selected, false)
-	if e.Relation == RelationFocus || e.Relation == RelationBlocker || e.Relation == RelationBlocks {
+	if !needsLabel(e) {
 		return card
 	}
 
@@ -238,6 +258,29 @@ func (m *Model) renderEntry(e Entry, width int, selected bool) string {
 	// tagging those would be noise. "via parent", "open child", "related" and
 	// "discovered from" all say something the column heading does not.
 	return card + "\n" + m.theme.Muted.Width(width).Render(uitext.Truncate(string(e.Relation), width))
+}
+
+// needsLabel reports whether e's relation is not already implied by the
+// column heading it renders under, and therefore gets a label line of its
+// own. renderEntry and entryRows both call this — never the three-way
+// equality check directly — so the label a card actually gets and the row it
+// is budgeted for cannot drift apart.
+func needsLabel(e Entry) bool {
+	return e.Relation != RelationFocus && e.Relation != RelationBlocker && e.Relation != RelationBlocks
+}
+
+// entryRows is the exact number of lines renderEntry produces for e: one for
+// a dangling blocker (it has no card, only a bare id), cardfmt.Height(false)
+// for a plain card, and one more again for a labelled card.
+func entryRows(e Entry) int {
+	if e.Issue == nil {
+		return 1
+	}
+	if needsLabel(e) {
+		return cardfmt.Height(false) + 1
+	}
+
+	return cardfmt.Height(false)
 }
 
 // clip holds the pane inside its allotted geometry. joinPanes (tui/app.go)
@@ -347,8 +390,11 @@ func (m *Model) exists(id string) bool {
 	return ok
 }
 
-// window picks the slice of a column's entries to render so the cursor stays
-// visible, mirroring boardview's columnWindow scoped to a single column.
+// window picks a starting index that keeps the cursor visible within a run
+// of roughly maxFit entries, mirroring boardview's columnWindow scoped to a
+// single column. maxFit is sized from the smallest possible per-entry cost
+// (see entryWindow), so it is a generous estimate rather than an exact
+// count; fitCount is what turns start into a real, budget-accurate end.
 func window(cursorRow, maxFit, total int, focused bool) (start, end int) {
 	if maxFit <= 0 {
 		return 0, 0
@@ -362,4 +408,31 @@ func window(cursorRow, maxFit, total int, focused bool) (start, end int) {
 	end = min(start+maxFit, total)
 
 	return start, end
+}
+
+// fitCount is how many of entries, in order, fit within budget rows of
+// their real per-entry cost (entryRows).
+func fitCount(entries []Entry, budget int) int {
+	used, n := 0, 0
+	for _, e := range entries {
+		cost := entryRows(e)
+		if used+cost > budget {
+			break
+		}
+		used += cost
+		n++
+	}
+
+	return n
+}
+
+// totalRows sums entryRows over entries, so entryWindow can tell in one
+// comparison whether a column needs to reserve a "+N more" row at all.
+func totalRows(entries []Entry) int {
+	sum := 0
+	for _, e := range entries {
+		sum += entryRows(e)
+	}
+
+	return sum
 }

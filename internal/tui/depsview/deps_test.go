@@ -1,6 +1,7 @@
 package depsview_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
 	"github.com/Toshik1978/beads-viewer/internal/config"
+	"github.com/Toshik1978/beads-viewer/internal/tui/cardfmt"
 	"github.com/Toshik1978/beads-viewer/internal/tui/depsview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 )
@@ -322,20 +324,73 @@ func (s *depsTestSuite) TestViewFitsItsAllottedGeometry() {
 	m.SetSnapshot(s.sample())
 	s.Require().True(m.Reveal("focus"))
 
-	for _, size := range [][2]int{{0, 0}, {1, 1}, {20, 3}, {40, 10}, {80, 24}, {200, 60}} {
-		s.Run("", func() {
-			m.SetSize(size[0], size[1])
+	// empty records whether width alone forces View to return "" at this
+	// size: columnWidth floors at 0 below 7 columns' worth of width (three
+	// unit gaps plus one cell per column), so {0,0} and {1,1} are expected
+	// to render nothing, not merely permitted to. Asserting that directly —
+	// rather than branching on whatever View happened to return — is the
+	// difference between a subtest that can fail and one that cannot.
+	for _, tc := range []struct {
+		width, height int
+		empty         bool
+	}{
+		{0, 0, true},
+		{1, 1, true},
+		{20, 3, false},
+		{40, 10, false},
+		{80, 24, false},
+		{200, 60, false},
+	} {
+		s.Run(fmt.Sprintf("%dx%d", tc.width, tc.height), func() {
+			m.SetSize(tc.width, tc.height)
 			out := ansi.Strip(m.View())
-			if out == "" {
+
+			if tc.empty {
+				s.Empty(out, "a degenerate size must render nothing, not a truncated fragment")
+
 				return
 			}
+
 			lines := strings.Split(out, "\n")
-			s.LessOrEqual(len(lines), size[1], "pane is taller than its budget at %v", size)
+			s.LessOrEqual(len(lines), tc.height, "pane is taller than its budget at %dx%d", tc.width, tc.height)
 			for _, line := range lines {
-				s.LessOrEqual(lipgloss.Width(line), size[0], "line %q exceeds width at %v", line, size)
+				s.LessOrEqual(lipgloss.Width(line), tc.width, "line %q exceeds width at %dx%d", line, tc.width,
+					tc.height)
 			}
 		})
 	}
+}
+
+func (s *depsTestSuite) TestRelatedColumnBudgetsLabelledCardsHonestly() {
+	// Every "related" entry is labelled (RelationRelated needs a label the
+	// column heading doesn't already say), so each one costs
+	// cardfmt.Height(false)+1 lines, not cardfmt.Height(false) alone. A
+	// budget that divided avail by the smaller, unlabelled cost believed all
+	// five fit here — 20/4 == 5, and len(entries) == 5 is not ">" 5, so the
+	// old code never reserved a row for "+N more" either — while their real
+	// cost (5*5 = 25) ran past the column's actual budget. clip's tail-chop
+	// still held the outer pane to m.height, but by silently cutting into
+	// the related column's own content instead of reporting the drop, which
+	// is what the "+N more" marker exists to do everywhere else.
+	issues := []beads.Issue{mkIssue("focus")}
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("rel%d", i)
+		issues[0].Dependencies = append(issues[0].Dependencies, beads.Dependency{
+			IssueID: "focus", DependsOnID: id, Type: beads.DepRelated,
+		})
+		issues = append(issues, mkIssue(id))
+	}
+
+	m := depsview.New(s.th())
+	m.SetSize(200, 21)
+	m.SetSnapshot(beads.NewSnapshot(issues))
+	s.Require().True(m.Reveal("focus"))
+
+	out := ansi.Strip(m.View())
+	lines := strings.Split(out, "\n")
+	s.LessOrEqual(len(lines), 21, "pane must not exceed its height budget")
+	s.Contains(out, "+2 more", "a column that had to drop entries must say so — this is the important half: "+
+		"clip() alone already makes the height bound pass, which is why the old bug was invisible")
 }
 
 func (s *depsTestSuite) TestDegenerateSizesDoNotPanic() {
@@ -353,17 +408,69 @@ func (s *depsTestSuite) TestDegenerateSizesDoNotPanic() {
 }
 
 func (s *depsTestSuite) TestSelectedCardRendersDifferentlyFromUnselected() {
-	// Styling asserted separately from content, per the house rule.
+	// Styling asserted separately from content, per the house rule — and
+	// specifically the selection styling, not merely "the frame has ANSI in
+	// it somewhere" (cardfmt's own border alone would satisfy that, whether
+	// or not the cursor's position was ever threaded through).
+	//
+	// Reveal always parks the cursor on the newly revealed subject (there is
+	// no cursor-movement method yet, that is the next task), so the only way
+	// to see the same card rendered both selected and unselected in this
+	// task is to reveal it once directly, and once by revealing a neighbour
+	// that pulls the same issue into a different, unselected column. "focus"
+	// plays both parts: revealed, it is the sole selected card; with "live"
+	// revealed instead, "focus" is live's blocker and appears — same issue,
+	// same width, same theme — as a plain, unselected card in blocked-by.
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("focus"),
+		mkIssue("live", withDep(beads.DepBlocks, "focus")),
+	})
+	const width = 100
+	// Mirrors depsview's own unexported columnWidth: (width -
+	// columnGap*(columnCount-1)) / columnCount, with columnGap=1 and
+	// columnCount=4. There is no exported way to ask the model for the
+	// width it renders cards at, so reconstructing cardfmt.Render's
+	// expected output requires knowing this.
+	colWidth := (width - 3) / 4
+
 	m := depsview.New(s.th())
-	m.SetSize(120, 20)
-	m.SetSnapshot(s.sample())
+	m.SetSize(width, 20)
+	m.SetSnapshot(snap)
+
 	s.Require().True(m.Reveal("focus"))
+	selectedFrame := m.View()
 
-	withCursor := m.View()
-	stripped := ansi.Strip(withCursor)
+	s.Require().True(m.Reveal("live"))
+	unselectedFrame := m.View()
 
-	s.NotEqual(stripped, withCursor, "the frame must carry styling at all")
-	s.NotEmpty(m.SelectedID(), "a freshly revealed view must have a cursor somewhere")
+	focusIssue, ok := snap.ByID("focus")
+	s.Require().True(ok)
+	selectedCard := cardfmt.Render(s.th(), snap, focusIssue, colWidth, true, false)
+	unselectedCard := cardfmt.Render(s.th(), snap, focusIssue, colWidth, false, false)
+
+	s.NotEqual(selectedCard, unselectedCard, "selection must change the card's own styling")
+	s.Equal(ansi.Strip(selectedCard), ansi.Strip(unselectedCard), "selection is styling, not content")
+
+	// Only the content rows (the id/priority line and the title line) are
+	// checked, not the border rows: a bordered box's top and bottom rows are
+	// just repeated "─" styled by selection state alone, with nothing
+	// issue-specific in them, so a selected border row from "live"'s own
+	// card (genuinely selected in unselectedFrame) would match a selected
+	// border row asserted absent for "focus" even though they belong to two
+	// different cards — the content rows carry the id and are what actually
+	// pins the check to "focus" specifically. Rows 1 and 2 are the header
+	// and title lines; 0 and 3 are the top and bottom border.
+	selectedContent := strings.Split(selectedCard, "\n")[1:3]
+	unselectedContent := strings.Split(unselectedCard, "\n")[1:3]
+
+	for _, line := range selectedContent {
+		s.Contains(selectedFrame, line, "the revealed subject's card must render selected")
+		s.NotContains(unselectedFrame, line, "focus is no longer under the cursor once live is revealed")
+	}
+	for _, line := range unselectedContent {
+		s.NotContains(selectedFrame, line, "focus must not render as selected in a frame where it is the cursor")
+		s.Contains(unselectedFrame, line, "focus renders unselected once it is no longer under the cursor")
+	}
 }
 
 func (s *depsTestSuite) TestSnapshotSwapKeepsTheFocus() {
