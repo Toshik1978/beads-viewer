@@ -34,8 +34,8 @@ type Counts struct {
 // get wrong: a dependency on an id absent from the snapshot does block — br's
 // LEFT JOIN keeps those rows via `OR i.id IS NULL`, on the principle that an
 // unresolvable blocker is not a satisfied one. The second, blockedByOpenChild,
-// is a close-ordering check specific to epics: an open, non-template child
-// counts as blocking one too.
+// is a close-ordering check specific to epics: an open child counts as
+// blocking one too.
 //
 // The third, BlockedAncestor, is why the parent-child edge is at once
 // excluded and not. The edge itself never blocks — DepType.Blocks() filters it
@@ -116,9 +116,6 @@ func (s *Snapshot) IsReady(id string) bool {
 
 	switch {
 	case issue.Status != StatusOpen,
-		issue.Pinned,
-		issue.Ephemeral,
-		issue.IsTemplate,
 		strings.Contains(issue.ID, wispMarker),
 		issue.DeferUntil != nil && issue.DeferUntil.After(time.Now()):
 		return false
@@ -166,8 +163,8 @@ func (s *Snapshot) BlockedByOpenChild(id string) bool {
 //
 // The filter is s.blocks itself rather than a restatement of its guards. That
 // composes exactly, because s.blocks answers true on the absent-target branch
-// before it looks at the target's template flag or status — so within an edge
-// s.blocks accepts, "the target is not in byID" is the whole of what makes it
+// before it looks at the target's status — so within an edge s.blocks
+// accepts, "the target is not in byID" is the whole of what makes it
 // dangling. Restating the guards instead would work today and quietly stop
 // working the moment a fourth exclusion joins s.blocks: this list would keep
 // reporting the edges that rule now excludes, and nothing would fail.
@@ -235,7 +232,7 @@ func (s *Snapshot) blockedByOpenChild(issue *Issue) bool {
 	}
 
 	return slices.ContainsFunc(s.children[issue.ID], func(child *Issue) bool {
-		return !child.Status.IsTerminal() && !child.IsTemplate
+		return !child.Status.IsTerminal()
 	})
 }
 
@@ -290,5 +287,5 @@ func (s *Snapshot) blocks(dep Dependency) bool {
 		return true
 	}
 
-	return !target.IsTemplate && !target.Status.IsTerminal()
+	return !target.Status.IsTerminal()
 }

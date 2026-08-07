@@ -108,7 +108,7 @@ func blockedByEntries(snap *beads.Snapshot, focusID string) []Entry {
 	}
 	if snap.BlockedByOpenChild(focusID) {
 		for _, child := range snap.Children(focusID) {
-			if child.Status.IsTerminal() || child.IsTemplate {
+			if child.Status.IsTerminal() {
 				continue
 			}
 			entries = append(entries, Entry{Issue: child, ID: child.ID, Relation: RelationOpenChild})

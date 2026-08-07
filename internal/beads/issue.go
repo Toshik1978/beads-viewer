@@ -20,7 +20,7 @@ type Comment struct {
 // pointers or zero-valued rather than required, because br omits empty ones
 // (serde skip_serializing_if), so absence is normal and not an error.
 //
-// The struct carries 28 fields, above the Global Constraints' 20-field
+// The struct carries 26 fields, above the Global Constraints' 20-field
 // tripwire for behavioural god objects; that limit targets state-heavy
 // types, and a flat DTO mirroring an external schema is the intended
 // exception, so the record is kept whole rather than split.
@@ -47,9 +47,6 @@ type Issue struct {
 	ExternalRef        string       `json:"external_ref"`
 	SourceRepo         string       `json:"source_repo"`
 	DeletedAt          *time.Time   `json:"deleted_at"`
-	Pinned             bool         `json:"pinned"`
-	Ephemeral          bool         `json:"ephemeral"`
-	IsTemplate         bool         `json:"is_template"`
 	Labels             []string     `json:"labels"`
 	FormerIDs          []string     `json:"former_ids"`
 	Dependencies       []Dependency `json:"dependencies"`
