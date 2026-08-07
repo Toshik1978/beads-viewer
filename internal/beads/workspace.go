@@ -3,6 +3,7 @@ package beads
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -66,7 +67,17 @@ func workspaceAt(path string) (Workspace, error) {
 	// vulnerability: bv only reads the file, and the user names their own path.
 	info, err := os.Stat(path) //nolint:gosec // intentional: user-supplied workspace path
 	if err != nil {
-		return Workspace{}, fmt.Errorf("%w: %s", ErrNoWorkspace, path)
+		// Only a genuinely absent path is "no workspace here". Anything else —
+		// an unreadable parent directory, a name too long, a dead symlink loop
+		// — is a fact about the filesystem the user needs told to them, and
+		// collapsing it into ErrNoWorkspace reports a permissions problem as a
+		// typo. The distinction matters more now that these errors surface in
+		// the status bar rather than only on stderr at startup.
+		if errors.Is(err, fs.ErrNotExist) {
+			return Workspace{}, fmt.Errorf("%w: %s", ErrNoWorkspace, path)
+		}
+
+		return Workspace{}, fmt.Errorf("inspect %s: %w", path, err)
 	}
 
 	dir := path
@@ -94,6 +105,12 @@ func searchUpwards() (Workspace, error) {
 		return Workspace{}, fmt.Errorf("determine working directory: %w", err)
 	}
 
+	// Kept because dir is the loop variable: the failure message names where
+	// the walk began, which is the one fact the reader cannot infer from the
+	// message itself. "No .beads directory found" invites the reply "yes there
+	// is" from someone whose shell is not where they think it is.
+	start := dir
+
 	for {
 		candidate := filepath.Join(dir, beadsDirName)
 		if isDir(candidate) {
@@ -106,7 +123,7 @@ func searchUpwards() (Workspace, error) {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return Workspace{}, fmt.Errorf(
-				"%w at or above the working directory — run 'br init' first", ErrNoWorkspace)
+				"%w at or above %s — run 'br init' first", ErrNoWorkspace, start)
 		}
 
 		dir = parent

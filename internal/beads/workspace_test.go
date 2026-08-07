@@ -1,6 +1,7 @@
 package beads_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -55,6 +56,29 @@ func (s *workspaceTestSuite) TestExplicitPathMissingIsAnError() {
 	s.ErrorIs(err, beads.ErrNoWorkspace)
 }
 
+// TestUnreadablePathIsNotReportedAsMissing separates the two failures os.Stat
+// reports through one return: a path that is not there, and a path that is
+// there but cannot be looked at. Collapsing the second into ErrNoWorkspace
+// tells a user with a permissions problem to check their spelling.
+func (s *workspaceTestSuite) TestUnreadablePathIsNotReportedAsMissing() {
+	if os.Geteuid() == 0 {
+		s.T().Skip("root bypasses directory permissions, so os.Stat cannot fail with EACCES")
+	}
+
+	// The permission has to be removed from the *parent*: stat on a directory
+	// needs search permission on the directory holding it, not on the
+	// directory itself.
+	parent := filepath.Join(s.T().TempDir(), "locked")
+	target := s.makeWorkspace(parent, true)
+	s.Require().NoError(os.Chmod(parent, 0o000))
+	s.T().Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	_, err := beads.FindWorkspace(filepath.Join(target, ".beads"))
+	s.Require().Error(err)
+	s.Require().NotErrorIs(err, beads.ErrNoWorkspace)
+	s.Require().ErrorIs(err, fs.ErrPermission)
+}
+
 func (s *workspaceTestSuite) TestEnvironmentVariable() {
 	root := s.makeWorkspace(s.T().TempDir(), true)
 	s.T().Setenv("BEADS_DIR", filepath.Join(root, ".beads"))
@@ -99,6 +123,26 @@ func (s *workspaceTestSuite) TestNoWorkspaceAnywhere() {
 	_, err := beads.FindWorkspace("")
 	s.Require().ErrorIs(err, beads.ErrNoWorkspace)
 	s.Contains(err.Error(), "br init")
+}
+
+// TestNoWorkspaceAnywhereNamesWhereItLooked pins the half of that message a
+// reader cannot supply for themselves. "At or above the working directory"
+// is unanswerable when the reader disagrees about which directory that is.
+func (s *workspaceTestSuite) TestNoWorkspaceAnywhereNamesWhereItLooked() {
+	s.T().Setenv("BEADS_DIR", "")
+	s.T().Chdir(s.T().TempDir())
+
+	// Against os.Getwd rather than the TempDir path: on macOS the two spell
+	// the same directory differently (/var versus /private/var), and it is
+	// the working directory as the process sees it that the message has to
+	// name — that is the spelling the reader will compare against their own
+	// shell.
+	want, err := os.Getwd()
+	s.Require().NoError(err)
+
+	_, err = beads.FindWorkspace("")
+	s.Require().ErrorIs(err, beads.ErrNoWorkspace)
+	s.Contains(err.Error(), want)
 }
 
 func (s *workspaceTestSuite) TestDirectoryWithoutIssuesFileIsValid() {
