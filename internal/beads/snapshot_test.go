@@ -573,3 +573,25 @@ func (s *snapshotTestSuite) TestRelationToPrefersTheSpecificClaim() {
 	s.Equal(beads.DepDiscoveredFrom, fromB)
 	s.True(forwardB)
 }
+
+func (s *snapshotTestSuite) TestRelationToWhenBothEndsClaimSomethingSpecific() {
+	// Two specific claims, neither more specific than the other. Each end
+	// reports its own declaration rather than deferring to the other, so the
+	// pair does not read as "reverse" from both sides at once.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "a", Dependencies: []beads.Dependency{
+			{IssueID: "a", DependsOnID: "b", Type: beads.DepSupersedes},
+		}},
+		{ID: "b", Dependencies: []beads.Dependency{
+			{IssueID: "b", DependsOnID: "a", Type: beads.DepCausedBy},
+		}},
+	})
+
+	fromA, forwardA := snap.RelationTo("a", "b")
+	s.Equal(beads.DepSupersedes, fromA)
+	s.True(forwardA, "a reports its own claim")
+
+	fromB, forwardB := snap.RelationTo("b", "a")
+	s.Equal(beads.DepCausedBy, fromB)
+	s.True(forwardB, "b reports its own claim")
+}

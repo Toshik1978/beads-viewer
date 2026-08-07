@@ -159,16 +159,18 @@ func (s *Snapshot) RelatedTo(id string) []*Issue {
 // same pair reports nothing, because those are answered by Blockers and
 // Children and would otherwise show up twice under a misleading label.
 //
-// When both ends declare an edge, the more specific one wins from either
-// side. "related" and "relates-to" are the fallbacks for when nothing more
-// specific is known, so a pair that says both "related" and "discovered-from"
-// is telling us about provenance and should read that way from both ends.
+// Focus's own claim wins, except when focus only says "related"/"relates-to"
+// and the other end says something more specific — then the specific claim
+// wins and focus is reported as the receiving end. Two different specific
+// claims are not weighed against each other: each end simply reports its own,
+// so a pair that claims both "supersedes" and "caused-by" doesn't have one
+// side's word silently overridden by the other's.
 func (s *Snapshot) RelationTo(focusID, otherID string) (DepType, bool) {
 	own := relationEdge(s.byID[focusID], otherID)
 	theirs := relationEdge(s.byID[otherID], focusID)
 
 	switch {
-	case own != "" && (theirs == "" || isGenericRelation(theirs)):
+	case ownPrevails(own, theirs):
 		return own, true
 	case theirs != "":
 		return theirs, false
@@ -319,6 +321,21 @@ func relationEdge(issue *Issue, target string) DepType {
 // "these are connected" — the claims any more specific type outranks.
 func isGenericRelation(d DepType) bool {
 	return d == DepRelated || d == DepRelatesTo
+}
+
+// ownPrevails reports whether RelationTo should report own rather than
+// theirs. own loses only in the one case where it is outranked outright: own
+// is the generic fallback and theirs is a specific claim. Every other
+// combination — own specific, or theirs empty, or theirs itself only
+// generic — leaves own's own claim standing, including when both ends
+// declare different specific types: neither outranks the other, so each end
+// is left reporting its own.
+func ownPrevails(own, theirs DepType) bool {
+	if own == "" {
+		return false
+	}
+
+	return !isGenericRelation(own) || theirs == "" || isGenericRelation(theirs)
 }
 
 // cloneIssue copies an Issue and every field through which a caller could
