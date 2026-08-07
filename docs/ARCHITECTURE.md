@@ -127,6 +127,18 @@ touched, so there is nothing for a lock to protect. The app simply swaps the
 pointer (`Model.applySnapshot`) once the new snapshot is ready, and the next
 frame renders from it.
 
+Rebuilding everything on every write is the whole of the design, so it is
+worth stating what it costs rather than only why it is safe. Measured at
+10,000 issues (a 12 MB `issues.jsonl`): decoding the file takes 58 ms, and a
+keystroke still redraws in 1.2 ms, because the decode runs off the event loop
+and the frame is served from indexes built once per snapshot rather than by
+scanning. Around 50,000 issues — 277 ms to decode — is where a reload starts
+to be something a reader feels, and where the answer would be an incremental
+reader rather than anything in the UI. Those three numbers are what make
+"just rebuild it" a design rather than a shortcut: the full table they are
+quoted from, including memory and the very-large-file case, is maintained in
+[`README.md`](../README.md#scale) and not duplicated here.
+
 The same construction pass also builds a reverse index. Each `Issue`'s own
 `Dependencies` only says what blocks *it* — the forward direction. `Snapshot`
 additionally indexes `dependents` (every issue that declares a dependency on a
