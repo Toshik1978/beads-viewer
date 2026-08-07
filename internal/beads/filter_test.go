@@ -235,3 +235,11 @@ func (s *filterTestSuite) TestApplyPreservesSnapshotOrder() {
 	}
 	s.Equal([]string{"a-crit", "m-high", "z-low"}, gotIDs)
 }
+
+func (s *filterTestSuite) TestTextMatchesAFormerID() {
+	issue := &beads.Issue{ID: "e-1", Title: "unrelated", FormerIDs: []string{"old-1"}}
+
+	s.True(beads.Filter{Text: "old-1"}.Matches(issue))
+	s.True(beads.Filter{Text: "OLD-1"}.Matches(issue), "matching is case-insensitive")
+	s.False(beads.Filter{Text: "old-2"}.Matches(issue))
+}

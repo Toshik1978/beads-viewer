@@ -595,3 +595,125 @@ func (s *snapshotTestSuite) TestRelationToWhenBothEndsClaimSomethingSpecific() {
 	s.Equal(beads.DepCausedBy, fromB)
 	s.True(forwardB, "b reports its own claim")
 }
+
+func (s *snapshotTestSuite) TestByIDResolvesFormerIDs() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "e-1", FormerIDs: []string{"old-1"}},
+	})
+
+	issue, ok := snap.ByID("old-1")
+	s.Require().True(ok, "a former id must resolve")
+	s.Equal("e-1", issue.ID)
+}
+
+func (s *snapshotTestSuite) TestLiveIDShadowsAnIdenticalFormerID() {
+	// A live issue still using an id another issue merely used to have wins.
+	// Anything else would hide a real record behind a historical name.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "e-1", FormerIDs: []string{"contested"}},
+		{ID: "contested"},
+	})
+
+	issue, ok := snap.ByID("contested")
+	s.Require().True(ok)
+	s.Equal("contested", issue.ID)
+}
+
+func (s *snapshotTestSuite) TestTombstoneDoesNotShadowItsSuccessor() {
+	// This is the shape br actually produces: renaming an issue leaves a
+	// tombstone at the old id and records that id in the survivor's
+	// former_ids. If the tombstone counted as a live claimant, former-id
+	// resolution would never fire for a real rename at all.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "e-1.1", FormerIDs: []string{"e-old"}},
+		{ID: "e-old", Status: beads.StatusTombstone},
+	})
+
+	issue, ok := snap.ByID("e-old")
+	s.Require().True(ok)
+	s.Equal("e-1.1", issue.ID, "must follow the rename past the tombstone")
+}
+
+func (s *snapshotTestSuite) TestTombstoneWithoutASuccessorStaysFindable() {
+	// A plain deletion is not a rename: nothing claims the id, so the
+	// tombstone itself is still what that id means.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "e-gone", Status: beads.StatusTombstone},
+	})
+
+	issue, ok := snap.ByID("e-gone")
+	s.Require().True(ok)
+	s.Equal("e-gone", issue.ID)
+}
+
+func (s *snapshotTestSuite) TestParentEdgeNamingAFormerIDKeepsTheChildReachable() {
+	// The trap: without normalising the edge target, the child is filed under
+	// the alias, Children(canonical) misses it, and it vanishes from the tree
+	// while still sitting in Issues().
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "epic-new", FormerIDs: []string{"epic-old"}},
+		{ID: "kid", Dependencies: []beads.Dependency{
+			{IssueID: "kid", DependsOnID: "epic-old", Type: beads.DepParentChild},
+		}},
+	})
+
+	children := snap.Children("epic-new")
+	s.Require().Len(children, 1, "child must hang off the canonical parent")
+	s.Equal("kid", children[0].ID)
+
+	parent, ok := snap.Parent("kid")
+	s.Require().True(ok)
+	s.Equal("epic-new", parent.ID)
+
+	// And it must not also surface as its own root.
+	roots := snap.Roots()
+	rootIDs := make([]string, 0, len(roots))
+	for _, r := range roots {
+		rootIDs = append(rootIDs, r.ID)
+	}
+	s.NotContains(rootIDs, "kid")
+}
+
+func (s *snapshotTestSuite) TestAliasesDoNotChangeTheIssueSet() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "e-1", FormerIDs: []string{"old-1", "old-2"}},
+		{ID: "e-2"},
+	})
+
+	s.Equal(2, snap.Len(), "aliases are not issues")
+	s.Len(snap.Issues(), 2)
+}
+
+func (s *snapshotTestSuite) TestSelfEdgeThroughAFormerIDIsDropped() {
+	// An issue naming its own former id is naming itself. Normalisation
+	// happens before the self-edge guard precisely so this is caught.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "e-1", FormerIDs: []string{"old-1"}, Dependencies: []beads.Dependency{
+			{IssueID: "e-1", DependsOnID: "old-1", Type: beads.DepParentChild},
+		}},
+	})
+
+	s.Empty(snap.Children("e-1"))
+	rootIDs := make([]string, 0, len(snap.Roots()))
+	for _, r := range snap.Roots() {
+		rootIDs = append(rootIDs, r.ID)
+	}
+	s.Contains(rootIDs, "e-1", "a self-parenting issue surfaces as its own root")
+}
+
+func (s *snapshotTestSuite) TestFormerIDResolutionOnTheBrFixture() {
+	issues, err := beads.LoadIssues(filepath.Join("testdata", "br140.jsonl"))
+	s.Require().NoError(err)
+	snap := beads.NewSnapshot(issues)
+
+	// fx-9hy.1 was renamed from fx-9vv, and br left a tombstone at the old id.
+	renamed, ok := snap.ByID("fx-9hy.1")
+	s.Require().True(ok)
+	s.Equal([]string{"fx-9vv"}, renamed.FormerIDs)
+
+	// The whole point: the old id resolves to the survivor, not the tombstone
+	// br parked there.
+	followed, ok := snap.ByID("fx-9vv")
+	s.Require().True(ok)
+	s.Equal("fx-9hy.1", followed.ID, "must follow br's rename past its tombstone")
+}

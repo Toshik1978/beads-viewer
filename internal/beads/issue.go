@@ -51,6 +51,7 @@ type Issue struct {
 	Ephemeral          bool         `json:"ephemeral"`
 	IsTemplate         bool         `json:"is_template"`
 	Labels             []string     `json:"labels"`
+	FormerIDs          []string     `json:"former_ids"`
 	Dependencies       []Dependency `json:"dependencies"`
 	Comments           []Comment    `json:"comments"`
 }

@@ -31,6 +31,13 @@ type Snapshot struct {
 	// Both are keyed by the depended-on id.
 	dependents map[string][]*Issue
 	relatives  map[string][]*Issue
+	// aliases maps an id an issue used to carry to the id it carries now. br
+	// renames an issue when it gains a parent — the old id becomes a tombstone
+	// and the survivor records it in former_ids — so stale ids outlive what
+	// they named, in commit messages, in prose and in other issues' edges.
+	// Kept out of byID so that indexing can normalise edge targets through it
+	// deliberately, rather than resolving them by accident.
+	aliases map[string]string
 }
 
 // NewSnapshot indexes a decoded issue set.
@@ -51,6 +58,7 @@ func NewSnapshot(issues []Issue) *Snapshot {
 		parentOf:   make(map[string]string, len(issues)),
 		dependents: make(map[string][]*Issue),
 		relatives:  make(map[string][]*Issue),
+		aliases:    make(map[string]string),
 	}
 
 	stored := make([]Issue, len(issues))
@@ -65,6 +73,7 @@ func NewSnapshot(issues []Issue) *Snapshot {
 	}
 
 	sortIssues(snap.issues)
+	snap.indexAliases()
 	snap.indexHierarchy()
 
 	return snap
@@ -100,7 +109,9 @@ func (s *Snapshot) Children(id string) []*Issue { return slices.Clone(s.children
 // ByID returns the issue this snapshot resolves id to, and whether there is
 // one. Duplicate ids resolve to the record that appears last in the input,
 // per NewSnapshot's own policy — issues.jsonl is append-only, so a later line
-// is the more recent write.
+// is the more recent write. It also resolves an id the issue used to carry to
+// the one it carries now — see canonical — with a live id always winning over
+// a historical one.
 //
 // It exists because a caller cannot reproduce that resolution from Issues():
 // that slice is sorted, so the input order the policy is defined in terms of
@@ -108,7 +119,7 @@ func (s *Snapshot) Children(id string) []*Issue { return slices.Clone(s.children
 // when the duplicate records happen to tie on every sort key, which nothing
 // guarantees — two writes of one issue routinely differ in priority.
 func (s *Snapshot) ByID(id string) (*Issue, bool) {
-	issue, ok := s.byID[id]
+	issue, ok := s.byID[s.canonical(id)]
 
 	return issue, ok
 }
@@ -179,6 +190,49 @@ func (s *Snapshot) RelationTo(focusID, otherID string) (DepType, bool) {
 	}
 }
 
+// indexAliases maps every id an issue used to carry to the id it carries now.
+//
+// A *live* issue still using an id another issue merely used to have wins, and
+// no alias is recorded: hiding a real record behind a historical name would be
+// worse than not following the rename. A tombstone does not win, because a
+// rename is exactly what leaves one at the old id — treating it as a live
+// claimant would mean this index never fires for the case it exists for.
+//
+// Run after sortIssues, so that when two issues claim the same former id the
+// winner is the one that sorts first rather than whichever line happened to
+// come first in the file.
+func (s *Snapshot) indexAliases() {
+	for _, issue := range s.issues {
+		for _, former := range issue.FormerIDs {
+			if existing, exists := s.byID[former]; exists && !existing.IsTombstone() {
+				continue
+			}
+			if _, taken := s.aliases[former]; taken {
+				continue
+			}
+			s.aliases[former] = issue.ID
+		}
+	}
+}
+
+// canonical resolves an id that may be a former one to the id in use now,
+// returning it unchanged when it is already current or unknown.
+//
+// A tombstone at this id is deliberately not treated as current: br's rename
+// leaves one behind, so following the alias past it is the entire point. When
+// no successor claims the id, the tombstone is still returned — a deleted
+// issue that was never renamed stays findable under its own id.
+func (s *Snapshot) canonical(id string) string {
+	if issue, exists := s.byID[id]; exists && !issue.IsTombstone() {
+		return id
+	}
+	if current, aliased := s.aliases[id]; aliased {
+		return current
+	}
+
+	return id
+}
+
 // indexHierarchy fills children, parentOf and roots from parent-child edges.
 //
 // Each record's parent-child membership is resolved from its own
@@ -247,6 +301,13 @@ func (s *Snapshot) indexHierarchy() {
 // instead makes it surface as its own root, which is what "render rather
 // than validate" requires for malformed data — shown, not hidden.
 func (s *Snapshot) indexEdge(issue *Issue, dep Dependency, ownParent map[*Issue]string) {
+	// Resolved before the self-edge guard, not after: an issue naming its own
+	// former id is naming itself, and the guard below is what keeps that from
+	// filing the issue as its own parent. Resolving afterwards would also file
+	// children under a historical key that Children() never reads, leaving
+	// them in Issues() but unreachable from any Roots()/Children() walk.
+	dep.DependsOnID = s.canonical(dep.DependsOnID)
+
 	if dep.DependsOnID == issue.ID {
 		return
 	}
@@ -339,15 +400,17 @@ func ownPrevails(own, theirs DepType) bool {
 }
 
 // cloneIssue copies an Issue and every field through which a caller could
-// reach into the snapshot's memory, so the snapshot never aliases anything
-// the caller still holds: Labels, Dependencies and Comments are slices that a
-// shallow struct copy would leave pointing at the caller's backing arrays,
-// and ClosedAt/DueAt/DeferUntil/DeletedAt are pointers a shallow copy would
-// leave pointing at the caller's time.Time values. A later append, in-place
-// edit, or dereferencing assignment on the caller's side would otherwise leak
-// straight through into what is meant to be an immutable snapshot.
+// reach into the snapshot's memory, so the snapshot never aliases anything the
+// caller still holds: Labels, FormerIDs, Dependencies and Comments are slices
+// that a shallow struct copy would leave pointing at the caller's backing
+// arrays, and ClosedAt/DueAt/DeferUntil/DeletedAt are pointers a shallow copy
+// would leave pointing at the caller's time.Time values. A later append,
+// in-place edit, or dereferencing assignment on the caller's side would
+// otherwise leak straight through into what is meant to be an immutable
+// snapshot.
 func cloneIssue(issue Issue) Issue {
 	issue.Labels = slices.Clone(issue.Labels)
+	issue.FormerIDs = slices.Clone(issue.FormerIDs)
 	issue.Dependencies = slices.Clone(issue.Dependencies)
 	issue.Comments = slices.Clone(issue.Comments)
 	issue.ClosedAt = clonePtr(issue.ClosedAt)

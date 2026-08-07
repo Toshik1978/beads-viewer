@@ -129,6 +129,14 @@ func (f Filter) matchesText(issue *Issue) bool {
 		}
 	}
 
+	// A pre-rename id is what a reader has in hand from a commit message or a
+	// stale note; it should find the issue under the id it carries now.
+	for _, former := range issue.FormerIDs {
+		if strings.Contains(strings.ToLower(former), term) {
+			return true
+		}
+	}
+
 	return false
 }
 
