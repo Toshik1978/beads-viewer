@@ -149,13 +149,18 @@ func (s *deriveTestSuite) TestMatchesBrReady() {
 		s.T().Skip("br ready failed in that workspace")
 	}
 
-	var reported []struct {
-		ID string `json:"id"`
+	// br 1.4.0 wraps list output in an envelope: {"issues":[...],"total":n,...}.
+	// Decoded strictly rather than tolerating the older bare array, because an
+	// anchor test that silently absorbs a contract change has stopped anchoring.
+	var reported struct {
+		Issues []struct {
+			ID string `json:"id"`
+		} `json:"issues"`
 	}
 	s.Require().NoError(json.Unmarshal(out, &reported))
 
-	want := make([]string, len(reported))
-	for i, r := range reported {
+	want := make([]string, len(reported.Issues))
+	for i, r := range reported.Issues {
 		want[i] = r.ID
 	}
 
@@ -194,13 +199,16 @@ func (s *deriveTestSuite) TestMatchesBrBlocked() {
 		s.T().Skip("br blocked failed in that workspace")
 	}
 
-	var reported []struct {
-		ID string `json:"id"`
+	// Same envelope as TestMatchesBrReady; see the note there.
+	var reported struct {
+		Issues []struct {
+			ID string `json:"id"`
+		} `json:"issues"`
 	}
 	s.Require().NoError(json.Unmarshal(out, &reported))
 
-	want := make([]string, 0, len(reported))
-	for _, r := range reported {
+	want := make([]string, 0, len(reported.Issues))
+	for _, r := range reported.Issues {
 		want = append(want, r.ID)
 	}
 
