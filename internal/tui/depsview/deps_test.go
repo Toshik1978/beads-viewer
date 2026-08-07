@@ -208,6 +208,33 @@ func (s *depsTestSuite) TestOpenChildBlocksAnEpic() {
 	s.Equal(depsview.RelationOpenChild, entries[0].Relation)
 }
 
+// TestOpenChildSurvivesAFilterThatHidesIt is the asymmetry bv-vz2.10 named.
+// Since blockedness began resolving against the unfiltered workspace, the
+// predicate and the children index answered from different sets: a query
+// matching the epic but not its only open child left the epic correctly
+// marked blocked with an empty "blocked by" column and nothing naming the
+// cause. Both halves come from the workspace now.
+func (s *depsTestSuite) TestOpenChildSurvivesAFilterThatHidesIt() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		mkIssue("epic", func(i *beads.Issue) { i.IssueType = beads.TypeEpic }),
+		mkIssue("kid", func(i *beads.Issue) {
+			i.Title = "hidden by the query"
+			i.Dependencies = append(i.Dependencies, beads.Dependency{
+				IssueID: "kid", DependsOnID: "epic", Type: beads.DepParentChild,
+			})
+		}),
+	})
+
+	filtered := beads.Filter{Text: "epic"}.Apply(snap)
+	s.Require().Len(filtered.Issues(), 1, "the filter must actually hide the child")
+	s.Require().True(filtered.BlockedByOpenChild("epic"), "the epic is still blocked")
+
+	entries := depsview.Columns(filtered, "epic")[0].Entries
+	s.Require().Len(entries, 1, "a hidden child is still the reason, and must be named")
+	s.Equal("kid", entries[0].ID)
+	s.Equal(depsview.RelationOpenChild, entries[0].Relation)
+}
+
 func (s *depsTestSuite) TestBlocksColumnIsTheReverseIndex() {
 	snap := beads.NewSnapshot([]beads.Issue{
 		mkIssue("focus"),

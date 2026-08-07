@@ -97,6 +97,15 @@ func Columns(snap *beads.Snapshot, focusID string) []Column {
 // blocked through its parent chain and for an epic held by its own open
 // children — its doc comment says so directly. Asking each source separately is
 // what lets several be true at once and none stand in for another.
+//
+// Every source here resolves against the workspace rather than against this
+// snapshot, which matters because snap is usually a filtered one. Naming the
+// open children used to be the exception: the predicate answered from the
+// workspace while snap.Children answered from the filter, so a query hiding
+// an epic's only open child produced an empty "blocked by" column beside a
+// correctly blocked epic. Snapshot.BlockingChildren answers both halves from
+// the same place, which is also why there is no separate BlockedByOpenChild
+// guard left to disagree with the list beneath it.
 func blockedByEntries(snap *beads.Snapshot, focusID string) []Entry {
 	entries := entriesFor(snap.Blockers(focusID), RelationBlocker)
 
@@ -106,13 +115,8 @@ func blockedByEntries(snap *beads.Snapshot, focusID string) []Entry {
 	if ancestor, ok := snap.BlockedAncestor(focusID); ok {
 		entries = append(entries, Entry{Issue: ancestor, ID: ancestor.ID, Relation: RelationInherited})
 	}
-	if snap.BlockedByOpenChild(focusID) {
-		for _, child := range snap.Children(focusID) {
-			if child.Status.IsTerminal() {
-				continue
-			}
-			entries = append(entries, Entry{Issue: child, ID: child.ID, Relation: RelationOpenChild})
-		}
+	for _, child := range snap.BlockingChildren(focusID) {
+		entries = append(entries, Entry{Issue: child, ID: child.ID, Relation: RelationOpenChild})
 	}
 
 	return dedupeEntries(withoutID(entries, focusID))

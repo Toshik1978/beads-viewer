@@ -155,6 +155,21 @@ func (s *inheritTestSuite) TestBlockedByOpenChildIsEpicOnly() {
 	s.False(s.snap.BlockedByOpenChild("does-not-exist"))
 }
 
+// TestBlockingChildrenAgreeWithThePredicate holds the naming accessor and the
+// predicate to one answer across the whole fixture. They are read together —
+// the dependency view says "blocked by an open child" and then lists which —
+// so a case where one is true and the other empty is a column that states a
+// cause it cannot show.
+func (s *inheritTestSuite) TestBlockingChildrenAgreeWithThePredicate() {
+	for _, issue := range s.snap.Issues() {
+		s.Equal(s.snap.BlockedByOpenChild(issue.ID),
+			len(s.snap.BlockingChildren(issue.ID)) > 0, issue.ID)
+	}
+
+	s.Equal([]string{"h-epic-kid"}, ids(s.snap.BlockingChildren("h-epic")))
+	s.Empty(s.snap.BlockingChildren("does-not-exist"))
+}
+
 // TestDanglingBlockersNameTheMissingIds covers the third reason IsBlocked can
 // be true with nothing in Blockers, and the property that keeps it honest:
 // every entry it reports is an edge the blocker rule accepts, so a missing id

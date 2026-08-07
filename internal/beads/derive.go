@@ -159,6 +159,35 @@ func (s *Snapshot) BlockedByOpenChild(id string) bool {
 	return s.blockedByOpenChild(issue)
 }
 
+// BlockingChildren returns the open children holding this issue back under
+// the epic close-ordering rule: exactly the ones that make BlockedByOpenChild
+// true, and empty in every case where it is false.
+//
+// It exists because the predicate on its own cannot be rendered. A caller
+// told only that an epic is held by live work beneath it has to go and find
+// that work itself, and the obvious way — reading Children off the snapshot
+// it was handed — is wrong the moment that snapshot is filtered. The
+// predicate answers from the workspace (see origin), while Children belongs
+// to whatever the filter left, so a query hiding an epic's only open child
+// left the epic correctly marked blocked with nothing on screen naming why.
+func (s *Snapshot) BlockingChildren(id string) []*Issue {
+	s = s.origin()
+
+	issue, ok := s.byID[id]
+	if !ok {
+		return nil
+	}
+
+	var holding []*Issue
+	for _, child := range s.closeOrderingChildren(issue) {
+		if !child.Status.IsTerminal() {
+			holding = append(holding, child)
+		}
+	}
+
+	return holding
+}
+
 // DanglingBlockers returns the ids this issue declares a blocking edge on
 // that no issue in this snapshot answers to — genuinely missing, not merely
 // renamed. An id that resolves through canonical to a live issue is not
@@ -324,13 +353,24 @@ func (s *Snapshot) tallyOpen(id string, counts *Counts) {
 // the work that unblocks the epic. Gating on issue_type == epic matches br
 // exactly — a plain task or feature with open children is unaffected.
 func (s *Snapshot) blockedByOpenChild(issue *Issue) bool {
-	if issue.IssueType != TypeEpic {
-		return false
-	}
-
-	return slices.ContainsFunc(s.children[issue.ID], func(child *Issue) bool {
+	return slices.ContainsFunc(s.closeOrderingChildren(issue), func(child *Issue) bool {
 		return !child.Status.IsTerminal()
 	})
+}
+
+// closeOrderingChildren returns the children the close-ordering rule
+// considers at all — an epic's own, and none for anything else.
+//
+// Split from the predicate so BlockingChildren can name the offenders
+// without restating which issues are even eligible to have any. It returns
+// the stored slice rather than a copy, so the predicate above stays
+// allocation-free: Counts runs it for every open issue on every frame.
+func (s *Snapshot) closeOrderingChildren(issue *Issue) []*Issue {
+	if issue.IssueType != TypeEpic {
+		return nil
+	}
+
+	return s.children[issue.ID]
 }
 
 // blockedByDependency reports whether the issue holds an unsatisfied blocking
