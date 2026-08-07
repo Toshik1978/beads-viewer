@@ -1,6 +1,7 @@
 package licensing_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -96,6 +97,64 @@ func (s *workflowsTestSuite) TestEveryActionUsesAMovingMajorTag() {
 	s.Positive(seen, "no `uses:` steps found — the walk is broken, not clean")
 }
 
+// TestCoverageFloorsAgree pins the number to one value across the two places
+// that enforce it. ci.yml's coverage gate and Taskfile.yml's coverage target
+// each carry their own MIN_COVERAGE, and each carries a comment saying to
+// move both together — which is an instruction to a reader who happens to
+// read it, not a check. Drifting apart is silent and asymmetric: a local
+// `task coverage` that passes below CI's floor sends a red build to a
+// reviewer, and one above it lets CI accept work the author's own gate
+// rejected.
+func (s *workflowsTestSuite) TestCoverageFloorsAgree() {
+	inCI := s.workflowCoverageFloors()
+	local := s.taskfileCoverageFloor()
+
+	s.Require().NotEmpty(inCI,
+		"no MIN_COVERAGE found in ci.yml — the walk is broken, not the workflow clean")
+	s.Require().NotEmpty(local, "no MIN_COVERAGE found in Taskfile.yml's coverage task")
+
+	for _, floor := range inCI {
+		s.Equal(local, floor,
+			"ci.yml and Taskfile.yml must enforce the same coverage floor")
+	}
+}
+
+// workflowCoverageFloors returns every MIN_COVERAGE any step in ci.yml sets.
+// All of them rather than the first: two steps disagreeing with each other is
+// the same defect as a step disagreeing with the Taskfile, and taking the
+// first would hide it.
+func (s *workflowsTestSuite) workflowCoverageFloors() []string {
+	doc := s.decode(filepath.Join(s.root, ".github", "workflows", "ci.yml"))
+
+	var floors []string
+	for _, job := range asMap(doc["jobs"]) {
+		for _, step := range asSlice(asMap(job)["steps"]) {
+			if floor, ok := asMap(asMap(step)["env"])["MIN_COVERAGE"]; ok {
+				floors = append(floors, fmt.Sprint(floor))
+			}
+		}
+	}
+
+	return floors
+}
+
+// taskfileCoverageFloor returns the coverage task's own MIN_COVERAGE.
+//
+// Compared as text, because the two files spell the same floor differently —
+// ci.yml quotes it into a shell env var, the Taskfile leaves it a YAML
+// integer — and it is the number they enforce that has to match, not the type
+// the decoder happened to infer.
+func (s *workflowsTestSuite) taskfileCoverageFloor() string {
+	doc := s.decode(filepath.Join(s.root, "Taskfile.yml"))
+
+	floor, ok := asMap(asMap(asMap(asMap(doc["tasks"])["coverage"])["vars"]))["MIN_COVERAGE"]
+	if !ok {
+		return ""
+	}
+
+	return fmt.Sprint(floor)
+}
+
 // triggerPaths returns key's value under both push and pull_request, asserting
 // the two agree. They always should: a filter that differs between the two
 // events means a PR and its own merge to main run different checks.
@@ -109,11 +168,7 @@ func (s *workflowsTestSuite) triggerPaths(file, key string) []string {
 }
 
 func (s *workflowsTestSuite) paths(file, event, key string) []string {
-	data, err := os.ReadFile(filepath.Join(s.root, ".github", "workflows", file))
-	s.Require().NoError(err)
-
-	var doc map[string]any
-	s.Require().NoError(yaml.Unmarshal(data, &doc))
+	doc := s.decode(filepath.Join(s.root, ".github", "workflows", file))
 
 	// `on` survives as the string "on" through this decoder; a YAML 1.1 reader
 	// would hand back the boolean true instead, so this lookup is worth a
@@ -127,6 +182,20 @@ func (s *workflowsTestSuite) paths(file, event, key string) []string {
 	slices.Sort(out)
 
 	return out
+}
+
+// decode reads one YAML file into an untyped tree. Untyped because these
+// tests read a handful of keys out of files whose full schemas belong to
+// GitHub and Task, and modelling either would be a maintenance burden for no
+// extra assertion.
+func (s *workflowsTestSuite) decode(path string) map[string]any {
+	data, err := os.ReadFile(path)
+	s.Require().NoError(err)
+
+	var doc map[string]any
+	s.Require().NoError(yaml.Unmarshal(data, &doc), path)
+
+	return doc
 }
 
 func asMap(v any) map[string]any {

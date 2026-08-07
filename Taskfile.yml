@@ -52,7 +52,9 @@ tasks:
   coverage:
     desc: Report total statement coverage and fail below the floor, as CI does.
     vars:
-      # Duplicated in ci.yml's coverage gate; move both together.
+      # Duplicated in ci.yml's coverage gate. The two are held equal by
+      # TestCoverageFloorsAgree (internal/licensing), so changing one alone
+      # fails the suite rather than quietly letting the gates disagree.
       MIN_COVERAGE: 80
     cmds:
       # -coverpkg=./... credits a line whichever package's test reaches it.

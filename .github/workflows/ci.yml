@@ -233,7 +233,9 @@ jobs:
             });
 
       # Both conditions evaluated before exit, so one run reports everything.
-      # MIN_COVERAGE is duplicated in Taskfile.yml; move both.
+      # MIN_COVERAGE is duplicated in Taskfile.yml's coverage task. The two
+      # are held equal by TestCoverageFloorsAgree (internal/licensing), which
+      # reads this file, so changing one alone fails the suite.
       - name: Check test and coverage gates
         shell: bash
         env:
