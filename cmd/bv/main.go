@@ -103,6 +103,10 @@ func start(flags config.Flags) error {
 	// accepted, not fixed, here.
 	defer model.SaveTreeState(ws.Dir)
 
+	if err := requireTerminal(os.Stdin); err != nil {
+		return err
+	}
+
 	program := tea.NewProgram(newProgramModel(model))
 	go forward(watcher, program)
 

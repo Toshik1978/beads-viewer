@@ -63,6 +63,11 @@ Workspace discovery, in order: `--db`, then the `BEADS_DIR` environment
 variable, then the nearest `.beads` directory at or above the current
 directory.
 
+`bv` needs a terminal on stdin, and says so rather than starting when it does
+not have one — `echo | bv`, `bv < /dev/null`, or a cron job — so a redirected
+run ends in one line on stderr instead of a process that never returns.
+`--version` and `--help` are unaffected and pipe normally.
+
 ### Flags
 
 ```

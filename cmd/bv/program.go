@@ -1,10 +1,48 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"os"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Toshik1978/beads-viewer/internal/tui"
 )
+
+// requireTerminal refuses to start the UI when stdin is not a terminal.
+//
+// Without it, `echo | bv` and `bv < /dev/null` hang. bubbletea does not
+// report that its input is unusable: it falls back to opening /dev/tty,
+// finds the controlling terminal of whatever shell started bv, and blocks
+// there forever — before rendering anything, with the workspace already
+// loaded. What the user sees is a process that never returns and never says
+// why, which is the worst failure a program can have.
+//
+// The mode bit is the whole test, and the standard library is enough for it:
+// a terminal is a character device and a pipe or a regular file is not.
+// Reaching for a terminal library would buy a more thorough answer than this
+// question has, at the cost of a tenth direct dependency.
+//
+// It runs last, after the workspace is open, rather than first. Everything
+// before it can fail for reasons the user actually caused — a missing
+// workspace, a malformed issues.jsonl — and those are the more useful things
+// to be told about first when both are true. The cost of being told late is
+// one decode, which is milliseconds.
+func requireTerminal(stdin *os.File) error {
+	info, err := stdin.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect stdin: %w", err)
+	}
+
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return errors.New(
+			"stdin is not a terminal — bv is an interactive viewer and cannot run " +
+				"from a pipe, a file or a job without a terminal attached")
+	}
+
+	return nil
+}
 
 // programModel adapts *tui.Model to bubbletea's interface: tea.Model.Update
 // must return the tea.Model interface, which ireturn forbids everywhere else,

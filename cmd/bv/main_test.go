@@ -31,18 +31,19 @@ const testVersion = "0.0.0-main-test"
 // detachFromTerminal runs the child in a new session, so it has no
 // controlling terminal.
 //
-// WITHOUT THIS THE TEST HANGS ON ANY DEVELOPER MACHINE AND PASSES IN CI.
-// Redirecting stdin is not enough: when its input is not a terminal,
-// bubbletea falls back to opening /dev/tty, finds the terminal of whatever
-// shell started `go test`, and blocks on it forever — before rendering
-// anything, with the workspace already open. CI runners have no controlling
-// terminal, so that open fails there and bv exits immediately, which is
-// exactly the combination that lets the problem survive review: green on
-// every runner, hung on every laptop.
+// This used to be the only thing standing between this test and a hang on
+// every developer machine, while passing in CI: with stdin redirected but a
+// controlling terminal present, bubbletea fell back to opening /dev/tty and
+// blocked there forever. CI runners have no controlling terminal, so that
+// open failed there and bv exited immediately — green on every runner, hung
+// on every laptop.
 //
-// Setsid removes the terminal rather than trying to out-guess the library,
-// making a local run behave identically to CI. Unix-only, which matches what
-// this project builds and tests.
+// requireTerminal (program.go) now refuses that start outright, so the hang
+// is gone at the source and this is no longer load-bearing. It stays because
+// what it removes is the terminal itself: if requireTerminal ever regresses,
+// this test still fails in CI rather than hanging a laptop, which is the
+// asymmetry that let the original problem survive review. Unix-only, which
+// matches what this project builds and tests.
 func detachFromTerminal(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
@@ -98,6 +99,38 @@ func (s *mainTestSuite) TestInvalidFlagValueExitsOne() {
 	s.Require().ErrorAs(err, &exitErr)
 	s.Equal(1, exitErr.ExitCode())
 	s.Contains(string(out), "purple")
+}
+
+// TestNonTerminalStdinReportsRatherThanHangs is the regression guard for the
+// failure detachFromTerminal used to paper over. It reproduces the user's
+// case exactly — a redirected stdin with the session's controlling terminal
+// left in place, which is what `echo | bv` and `bv < /dev/null` produce — so
+// it deliberately does not call detachFromTerminal.
+//
+// The context deadline is what turns a regression into a failure instead of
+// a hang: without it, this test would block until `go test`'s own timeout and
+// print a whole-binary panic dump rather than naming itself.
+func (s *mainTestSuite) TestNonTerminalStdinReportsRatherThanHangs() {
+	dir := s.T().TempDir()
+	beadsDir := filepath.Join(dir, ".beads")
+	s.Require().NoError(os.MkdirAll(beadsDir, 0o755))
+
+	ctx, cancel := context.WithTimeout(s.T().Context(), runLimit)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, s.binary, "--db", beadsDir)
+	cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+s.T().TempDir())
+	cmd.Stdin = strings.NewReader("")
+	out, err := cmd.CombinedOutput()
+
+	s.Require().NotErrorIs(ctx.Err(), context.DeadlineExceeded,
+		"bv hung on a redirected stdin instead of reporting it")
+
+	var exitErr *exec.ExitError
+	s.Require().ErrorAs(err, &exitErr)
+	s.Equal(1, exitErr.ExitCode())
+	s.Contains(string(out), "stdin is not a terminal",
+		"the user must be told what is wrong, not left looking at a dead process")
 }
 
 // TestNeverWritesInsideBeads is a spec acceptance criterion. bv is read-only;
