@@ -130,3 +130,42 @@ func (s *jsonlTestSuite) TestDecodeHandlesVeryLongLines() {
 	s.Require().Len(issues, 1)
 	s.Len(issues[0].Design, 512*1024)
 }
+
+func (s *jsonlTestSuite) TestDecodesBr140Fixture() {
+	issues, err := beads.LoadIssues(filepath.Join("testdata", "br140.jsonl"))
+	s.Require().NoError(err)
+
+	snap := beads.NewSnapshot(issues)
+
+	// Every new edge type br 1.4.0 defines is represented, so the fixture
+	// cannot quietly stop covering one of them.
+	seen := make(map[beads.DepType]bool)
+	for _, issue := range snap.Issues() {
+		for _, dep := range issue.Dependencies {
+			seen[dep.Type] = true
+		}
+	}
+	for _, want := range []beads.DepType{
+		beads.DepRelatesTo, beads.DepDuplicates, beads.DepSupersedes,
+		beads.DepCausedBy, beads.DepRepliesTo, beads.DepParentChild,
+	} {
+		s.True(seen[want], "fixture must carry a %s edge", want)
+	}
+
+	// The rename pair, as records: a survivor at the new id and a tombstone
+	// still sitting at the old one. Scanned rather than looked up by id,
+	// because Task 6 makes ByID deliberately follow a rename past the
+	// tombstone — so ByID is the wrong tool for asserting the tombstone
+	// record itself exists.
+	var survivors, tombstones int
+	for _, issue := range snap.Issues() {
+		if issue.ID == "fx-9hy.1" {
+			survivors++
+		}
+		if issue.ID == "fx-9vv" && issue.IsTombstone() {
+			tombstones++
+		}
+	}
+	s.Equal(1, survivors, "the renamed issue is present under its new id")
+	s.Equal(1, tombstones, "the old id keeps a tombstone")
+}
