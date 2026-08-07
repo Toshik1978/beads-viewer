@@ -492,3 +492,24 @@ func (s *snapshotTestSuite) TestLoadSnapshotOfMissingFileIsEmptyNotAnError() {
 	s.Require().NoError(err)
 	s.Equal(0, snap.Len())
 }
+
+func (s *snapshotTestSuite) TestNewRelationTypesAreIndexed() {
+	for _, depType := range []beads.DepType{
+		beads.DepRelatesTo, beads.DepDuplicates,
+		beads.DepSupersedes, beads.DepCausedBy, beads.DepRepliesTo,
+	} {
+		s.Run(string(depType), func() {
+			snap := beads.NewSnapshot([]beads.Issue{
+				{ID: "a", Dependencies: []beads.Dependency{
+					{IssueID: "a", DependsOnID: "b", Type: depType},
+				}},
+				{ID: "b"},
+			})
+
+			// Both ends, because a reader asking "what is related to this"
+			// wants the other one whichever record holds the row.
+			s.Len(snap.RelatedTo("a"), 1, "declaring end")
+			s.Len(snap.RelatedTo("b"), 1, "receiving end")
+		})
+	}
+}

@@ -229,10 +229,11 @@ func (s *Snapshot) indexEdge(issue *Issue, dep Dependency, ownParent map[*Issue]
 		s.indexParentEdge(issue, dep, ownParent)
 	case dep.Type.Blocks():
 		s.dependents[dep.DependsOnID] = append(s.dependents[dep.DependsOnID], issue)
-	case dep.Type == DepRelated, dep.Type == DepDiscoveredFrom:
+	case dep.Type.IsRelation():
 		// Both directions. The edge is directional as data, but a reader
 		// asking "what is related to this" wants the other end regardless of
-		// which record happens to hold the row.
+		// which record happens to hold the row. Which *word* names the
+		// relation from each end is depsview's problem, not this index's.
 		s.relatives[dep.DependsOnID] = append(s.relatives[dep.DependsOnID], issue)
 		if target, exists := s.byID[dep.DependsOnID]; exists {
 			s.relatives[issue.ID] = append(s.relatives[issue.ID], target)

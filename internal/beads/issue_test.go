@@ -150,6 +150,42 @@ func (s *issueTestSuite) TestDepTypeBlocks() {
 	}
 }
 
+func (s *issueTestSuite) TestDepTypeClassification() {
+	cases := []struct {
+		depType    beads.DepType
+		blocks     bool
+		isRelation bool
+	}{
+		// The blocking three. Verified against br 1.4.0 by giving ten issues
+		// one edge each of a distinct type and reading back `br blocked`:
+		// only these three sources were reported.
+		{beads.DepBlocks, true, false},
+		{beads.DepConditionalBlocks, true, false},
+		{beads.DepWaitsFor, true, false},
+		// Hierarchy: neither blocking nor a relation.
+		{beads.DepParentChild, false, false},
+		// The relations, old and new.
+		{beads.DepRelated, false, true},
+		{beads.DepDiscoveredFrom, false, true},
+		{beads.DepRepliesTo, false, true},
+		{beads.DepRelatesTo, false, true},
+		{beads.DepDuplicates, false, true},
+		{beads.DepSupersedes, false, true},
+		{beads.DepCausedBy, false, true},
+		// Unknown types are neither, so they stay unclassified rather than
+		// being guessed at. br validates this field strictly, so a value it
+		// does not define can only reach bv through hand-edited JSONL.
+		{beads.DepType("no-such-type"), false, false},
+	}
+
+	for _, tc := range cases {
+		s.Run(string(tc.depType), func() {
+			s.Equal(tc.blocks, tc.depType.Blocks(), "Blocks")
+			s.Equal(tc.isRelation, tc.depType.IsRelation(), "IsRelation")
+		})
+	}
+}
+
 func (s *issueTestSuite) TestIssueIsTombstone() {
 	s.True(beads.Issue{Status: beads.StatusTombstone}.IsTombstone())
 
