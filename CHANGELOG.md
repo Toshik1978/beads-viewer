@@ -9,6 +9,76 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.5.0 — 2026-08-07
+
+Hiding closed issues — on by default since v1.3.0 — quietly changed the answer
+to "is this blocked?". A filter removes issues from the set the views draw
+from, and blockedness was being worked out from that narrowed set, where an
+issue a filter removed is indistinguishable from one that was never there. An
+unresolvable blocker is not a satisfied one, so an issue whose prerequisites
+were all finished — and therefore hidden — read as blocked by them. This
+release separates the two questions: what you can see is the filter's
+business, what is holding up what is the workspace's.
+
+**This moves blocked and ready markers on any workspace where finished work
+blocks unfinished work**, which is to say most of them. The status bar's
+counts do not move — they were always computed from every issue in the
+workspace, which is part of how this went unnoticed. What changes is which
+issues carry a blocked or a ready marker, and which board column they sit in.
+No key was added, removed or reassigned.
+
+### Blocked and ready describe the workspace, not the filtered view
+
+- An issue whose blockers are all closed is ready, whether or not those
+  blockers are on screen. Before, hide-closed on its own was enough to mark it
+  blocked; so was a text query that happened not to match the blocker, or a
+  label filter, or an explicit status filter.
+- The kanban board showed this most plainly, because a derived-blocked issue
+  is filed under Blocked whatever its own status field says: a workspace with
+  one issue in progress could show an empty In Progress column and no
+  indication of where that issue had gone. On the 562-issue workspace this was
+  reported from, eleven issues counted as blocked that were not, and nine had
+  lost their ready marker.
+- The dependency view no longer lists a filtered-out blocker as a missing id —
+  the one kind of blocker it flags as unresolvable, and the most alarming
+  thing it can say about an issue whose prerequisites are simply done.
+- The detail pane and the status bar never had this problem: both already read
+  the whole workspace rather than the filtered copy. That is the shape of the
+  fix — the rule those two followed at their own call sites is now a property
+  of a filtered snapshot itself, so every view gets it without having to
+  remember to.
+
+### The board's status lane keeps showing closed work
+
+- A Closed column emptied by hide-closed is a labelled column with nothing in
+  it and no explanation on screen. The status lane is exempt from that
+  preference now: it shows closed issues in the column that already sets them
+  apart from live work, which is the whole of what hiding them would have
+  achieved.
+- The other three lanes still honour it. Priority, assignee and type have no
+  Closed column, so a closed P1 would sit among the open P1s — exactly the
+  mixing the preference exists to prevent. `s` cycles the lanes, and closed
+  cards come and go with them.
+- Every other filter still reaches the board unchanged: a query, a label or a
+  status filter narrows it the same way it narrows the list and the tree. Only
+  hide-closed depends on the lane.
+- The status bar's `(N hidden)` goes quiet while that lane is on screen,
+  rather than counting issues as hidden beside a column that is showing them.
+
+### Features
+
+- feat(board): exempt the status lane from hide-closed ([3d69c5f](https://github.com/Toshik1978/beads-viewer/commit/3d69c5f35941340072bbb18852a4f5f06cbccfd9))
+
+### Bug Fixes
+
+- fix: derive blockedness from the workspace, not the filtered view ([0708bbb](https://github.com/Toshik1978/beads-viewer/commit/0708bbbcf41fb1575f027a80867d09b8f11e40cf))
+
+### Others
+
+- docs(readme): record the board's hide-closed exemption ([bd362ec](https://github.com/Toshik1978/beads-viewer/commit/bd362ec2854b447611cf02cba6acc194d5882d58))
+
+---
+
 ## v1.4.0 — 2026-08-07
 
 `br` 1.4.0 changed both what it writes and what it prints, and `bv` had
