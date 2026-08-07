@@ -9,6 +9,92 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.4.0 — 2026-08-07
+
+`br` 1.4.0 changed both what it writes and what it prints, and `bv` had
+drifted from it. Nothing ever failed — `bv` ignores fields it does not
+recognise, which is precisely why the drift went unnoticed: the edges it had
+stopped understanding simply did not appear. This release re-syncs the two.
+Five kinds of dependency edge that were being dropped now show up, an issue
+`br` has renamed can still be found under the id you remember, and three
+fields `br` no longer writes are gone from the rules that consulted them.
+
+**This changes what counts as ready, but only on older workspaces.** `br` no
+longer emits `pinned`, `ephemeral` or `is_template`, so `bv` no longer reads
+them. On a workspace `br` 1.4.0 wrote, nothing moves — those fields are never
+set. On an `issues.jsonl` from an earlier `br`, or one hand-edited to carry
+them, issues that used to be held out of the ready count are now included. No
+key was added, removed or reassigned.
+
+### Five dependency types that were invisible
+
+- `br` defines eleven kinds of dependency edge; `bv` knew six. Edges of type
+  `relates-to`, `duplicates`, `supersedes`, `caused-by` and `replies-to` were
+  not merely unlabelled — they were dropped outright, so an issue carrying one
+  showed no trace of it anywhere in the dependency view. They now appear in
+  the related column beside `related` and `discovered-from`.
+- What blocks an issue is unchanged. `blocks`, `conditional-blocks` and
+  `waits-for` are still the only edges that hold work up — checked against
+  `br` 1.4.0 rather than assumed — so no issue's blocked or ready state moves
+  on account of the five new types.
+
+### Relation labels now read from the end you are on
+
+- Most of these edges are asymmetric, and the card now says which side of one
+  you are looking at: *supersedes* on the issue that replaces, *superseded by*
+  on the issue replaced. Likewise *duplicates* / *duplicated by*, *caused by* /
+  *caused*, and *replies to* / *reply*. `relates-to` is symmetric and reads
+  *related* from both ends.
+- This also corrects `discovered-from`, wrong since the dependency view
+  shipped: both ends read *discovered from*, including the issue that was
+  discovered from rather than the one that did the discovering. The far end
+  now reads *led to*.
+- When two issues each declare an edge about the other, each card names the
+  edge that issue itself declared — unless it declared only the generic
+  `related`, in which case the more specific claim from the other side wins.
+
+### Renamed issues stay findable
+
+- `br` renames an issue when it gains a parent: `bv-k7g` becomes `bv-vz2.5`,
+  and a deletion marker stays behind at the old id. The old id therefore
+  outlives the thing it named, in commit messages, in notes, and in other
+  issues' dependency rows.
+- Typing an old id into the filter finds the issue under its current one, and
+  looking one up lands on the live issue rather than the marker `br` parked
+  at that id.
+- A dependency edge still naming an old id is followed too. The renamed issue
+  is treated as a real blocker rather than a satisfied one, so the "blocks"
+  and "blocked by" columns no longer disagree about the same edge depending on
+  which issue you were looking at when you asked.
+
+### Older workspaces still open
+
+- `bv` reads what `br` wrote, whichever version wrote it: fields 1.4.0 added
+  are ignored, fields it dropped are simply not consulted, and a status or
+  issue type `bv` has never heard of is still rendered as written. A workspace
+  from an earlier `br` opens exactly as it did, apart from the readiness
+  change noted above.
+
+### Features
+
+- feat(beads): index the five dependency types br 1.4.0 added ([d6bb635](https://github.com/Toshik1978/beads-viewer/commit/d6bb635cd6812985ebe7319ad785a2ac286025e1))
+- feat(depsview): label relation edges by direction ([d228e28](https://github.com/Toshik1978/beads-viewer/commit/d228e28563038807eb6e8c44e27ce5ac50f26667))
+- feat(beads): resolve ids an issue used to carry ([105d964](https://github.com/Toshik1978/beads-viewer/commit/105d964551bc2f12f9cebce4c1c246b9cc9400df))
+
+### Bug Fixes
+
+- fix(beads): make RelationTo symmetric when both ends claim a specific type ([afe2fe3](https://github.com/Toshik1978/beads-viewer/commit/afe2fe3ff41ab43a75b726503f6202244ac1308e))
+- fix: resolve former ids through the relation and blocking derivations ([541fce9](https://github.com/Toshik1978/beads-viewer/commit/541fce917e5e9622e24595fb875a777d9f3fcde1))
+
+### Others
+
+- docs(beads): spec and plan the br 1.4.0 contract adaptation ([10a3f71](https://github.com/Toshik1978/beads-viewer/commit/10a3f719c4efdfc8249e729bd98212ba28002e8a))
+- refactor(depsview): split rendering out of depsview.go ([d6598e1](https://github.com/Toshik1978/beads-viewer/commit/d6598e1a89e5f2583ba7a921cc379a3944a9e9fa))
+- docs(depsview): fix depsview.go's stale file header ([1a1c8a4](https://github.com/Toshik1978/beads-viewer/commit/1a1c8a4ba6fd5d7b64c75b3694190f5a62be380b))
+- refactor(beads): drop the fields br 1.4.0 no longer emits ([5e84130](https://github.com/Toshik1978/beads-viewer/commit/5e84130f2381f3984ec9b9e3482fa7bf319c7688))
+
+---
+
 ## v1.3.0 — 2026-08-03
 
 A fourth view: a dependency board that answers, for one issue, what is
