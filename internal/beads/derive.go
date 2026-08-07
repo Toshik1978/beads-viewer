@@ -30,12 +30,12 @@ type Counts struct {
 // IsBlocked reports whether anything prevents work on the issue.
 //
 // Three rules, each mirroring one br uses. The first is the direct blocker
-// query (src/storage/sqlite.rs:7175), which contains a detail that is easy to
-// get wrong: a dependency on an id absent from the snapshot does block — br's
-// LEFT JOIN keeps those rows via `OR i.id IS NULL`, on the principle that an
-// unresolvable blocker is not a satisfied one. The second, blockedByOpenChild,
-// is a close-ordering check specific to epics: an open child counts as
-// blocking one too.
+// rule, which contains a detail that is easy to get wrong and is checkable
+// without reading br's source: give an issue a blocks edge on an id absent
+// from the workspace and run `br blocked` — it still lists the issue, on the
+// principle that an unresolvable blocker is not a satisfied one. The second,
+// blockedByOpenChild, is a close-ordering check specific to epics: an open
+// child counts as blocking one too.
 //
 // The third, BlockedAncestor, is why the parent-child edge is at once
 // excluded and not. The edge itself never blocks — DepType.Blocks() filters it
@@ -50,9 +50,10 @@ type Counts struct {
 // and which br rejects too by stripping that marker before it reaches a child.
 //
 // The three do not rest on equal evidence, and it is the third that is worth
-// distrusting. The first two were read off br's own storage layer, at the
-// query cited above. The third was not: no query there states it, so it was
-// inferred black-box, from which issues br reports as blocked across a
+// distrusting. The first two were established the same reproducible way: run
+// `br blocked` against a small workspace built for the purpose and read off
+// which issues it reports. The third was not: no such recipe states it, so it
+// was inferred black-box, from which issues br reports as blocked across a
 // subtree. Its edge cases are therefore this project's own to get right, and
 // one of them was wrong for as long as the rule existed — a closed ancestor
 // still carrying an unsatisfied blocks edge propagated that block to every
@@ -95,7 +96,10 @@ func (s *Snapshot) Blockers(id string) []*Issue {
 		if !s.blocks(dep) {
 			continue
 		}
-		if target, exists := s.byID[dep.DependsOnID]; exists {
+		// Resolved through canonical, same as s.blocks itself: the row may
+		// name an id its target used to carry, and this must name the same
+		// issue s.blocks just judged rather than fail to find it at all.
+		if target, exists := s.byID[s.canonical(dep.DependsOnID)]; exists {
 			blockers = append(blockers, target)
 		}
 	}
@@ -154,12 +158,17 @@ func (s *Snapshot) BlockedByOpenChild(id string) bool {
 }
 
 // DanglingBlockers returns the ids this issue declares a blocking edge on
-// that no issue in this snapshot answers to.
+// that no issue in this snapshot answers to — genuinely missing, not merely
+// renamed. An id that resolves through canonical to a live issue is not
+// dangling even though the literal id in the row is absent from byID; only an
+// id that canonical leaves unresolved (or resolves to a tombstone with no
+// successor) still is.
 //
-// Each one makes IsBlocked true (see there) while contributing nothing to
-// Blockers, since there is no issue to return. Returning the raw ids is the
-// point: an id is all there is to say about a blocker that is not here, and
-// it is what a reader needs in order to go and find out where it went.
+// Each dangling id makes IsBlocked true (see there) while contributing
+// nothing to Blockers, since there is no issue to return. Returning the raw
+// ids is the point: an id is all there is to say about a blocker that is not
+// here, and it is what a reader needs in order to go and find out where it
+// went.
 //
 // The filter is s.blocks itself rather than a restatement of its guards. That
 // composes exactly, because s.blocks answers true on the absent-target branch
@@ -176,7 +185,7 @@ func (s *Snapshot) DanglingBlockers(id string) []string {
 
 	var missing []string
 	for _, dep := range issue.Dependencies {
-		if _, exists := s.byID[dep.DependsOnID]; exists || !s.blocks(dep) {
+		if _, exists := s.byID[s.canonical(dep.DependsOnID)]; exists || !s.blocks(dep) {
 			continue
 		}
 		missing = append(missing, dep.DependsOnID)
@@ -213,10 +222,11 @@ func (s *Snapshot) Counts() Counts {
 // blockedByOpenChild reports whether an epic is withheld purely because work
 // under it is still open.
 //
-// This mirrors br's `:child-open` cache marker (src/storage/sqlite.rs, an
-// epic-scoped query beside the direct blocker query at :7175): a
-// close-ordering constraint — an epic should not be closed while a child
-// remains open — not a dependency-graph prerequisite. It is therefore kept
+// This mirrors br's own close-ordering check: an epic with a live child still
+// reports as blocked by `br blocked` even when none of its own dependency
+// edges are unsatisfied, which is the observable half of what the
+// `:child-open` cache marker names — an epic should not be closed while a
+// child remains open, not a dependency-graph prerequisite. It is therefore kept
 // out of blocks and Blockers, which answer "what edge is stopping this
 // issue," not "should this epic's children finish first" — folding it in
 // there would make Blockers list a child as though it were a genuine
@@ -274,6 +284,14 @@ func (s *Snapshot) blockedAncestor(issue *Issue) (*Issue, bool) {
 }
 
 // blocks reports whether one dependency edge currently blocks its holder.
+//
+// dep.DependsOnID is resolved through canonical before the byID lookup, after
+// the external: check. br's rename leaves a tombstone at the old id, and
+// looking that tombstone up directly would read a renamed-but-still-open
+// blocker as satisfied — the row still blocks, it just now points at an id
+// its target no longer answers to. An external: id is never an id this
+// snapshot's issues use, so canonical would leave it unresolved regardless;
+// checking the prefix first just avoids the wasted lookup.
 func (s *Snapshot) blocks(dep Dependency) bool {
 	if !dep.Type.Blocks() {
 		return false
@@ -282,7 +300,7 @@ func (s *Snapshot) blocks(dep Dependency) bool {
 		return false
 	}
 
-	target, exists := s.byID[dep.DependsOnID]
+	target, exists := s.byID[s.canonical(dep.DependsOnID)]
 	if !exists {
 		return true
 	}

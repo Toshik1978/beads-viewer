@@ -1,10 +1,10 @@
 package depsview
 
-// This file turns the static columns depsview.go renders into a navigable,
+// This file turns the static columns deps.go builds into a navigable,
 // re-rootable view: cursor movement, promoting a card to the focus, and the
 // history that makes that walk reversible. deps.go stays pure column
-// construction; depsview.go stays geometry, rendering and Reveal — which
-// changes what the model is about rather than where its cursor is.
+// construction; render.go stays geometry, column fitting and the card and
+// heading lines; depsview.go stays the model's own state and Reveal.
 
 import (
 	"maps"

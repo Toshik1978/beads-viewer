@@ -1,7 +1,7 @@
 // Package depsview answers, for one issue, what is holding it up and what is
 // waiting on it — as four board columns (this file), rendered as a bubbletea
 // view with a two-dimensional cursor and a re-rooting history (depsview.go,
-// nav.go).
+// nav.go, render.go).
 //
 // Column construction stays pure and free of bubbletea, mirroring
 // boardview/group.go's split from its own renderer.
@@ -179,8 +179,8 @@ func relationLabel(depType beads.DepType, forward bool) Relation {
 // Written as an if-chain rather than a switch on purpose. golangci-lint's
 // exhaustive rule fires on a switch over beads.DepType unless every one of
 // the eleven types is listed, and listing the eight that share the fallback
-// then trips revive for identical branches. Task 3 hit the same wall in
-// DepType.IsRelation and resolved it the same way.
+// then trips revive for identical branches. DepType.IsRelation hit the same
+// wall and resolved it the same way.
 //
 // The fallthrough covers "related", "relates-to" and anything unrecognised:
 // all mean only that two issues are connected, which reads the same from

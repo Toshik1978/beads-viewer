@@ -137,7 +137,7 @@ optimize for its own sake:
   it grows, so the line cap does not apply to it.
 - No behavioural type has more than **20 fields**. `beads.Issue` is exempt:
   it is the JSONL decode target, and its field count mirrors `br`'s own wire
-  format rather than anything this project chose — currently 28.
+  format rather than anything this project chose — currently 26.
 - At most **5 exported type declarations per file** (`revive`'s
   `max-public-structs`, enforced with `enable-all-rules: true`). This counts
   every exported type declaration, not only structs. When a file would

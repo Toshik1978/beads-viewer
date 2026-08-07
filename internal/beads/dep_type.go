@@ -45,6 +45,13 @@ func (d DepType) Blocks() bool {
 // validates, but an edge whose meaning is unknown has neither a direction to
 // preserve nor a label to render, so it stays unclassified rather than being
 // guessed at.
+//
+// Written as an ||-chain rather than a switch on purpose, matching Blocks()
+// above and depsview's relationWords: golangci-lint's exhaustive rule fires on
+// a switch over DepType unless every one of the eleven types is listed, and
+// listing the four that fall through then trips revive for identical
+// branches. A future "cleanup" back into a switch will fail the gate for
+// exactly this reason.
 func (d DepType) IsRelation() bool {
 	return d == DepRelated || d == DepDiscoveredFrom || d == DepRelatesTo ||
 		d == DepDuplicates || d == DepSupersedes || d == DepCausedBy ||

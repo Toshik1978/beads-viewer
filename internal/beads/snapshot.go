@@ -151,9 +151,9 @@ func (s *Snapshot) Roots() []*Issue { return slices.Clone(s.roots) }
 // makes, and issues.jsonl being append-only makes it rare.
 func (s *Snapshot) Dependents(id string) []*Issue { return slices.Clone(s.dependents[id]) }
 
-// RelatedTo returns every issue joined to id by a related or discovered-from
-// edge, in either direction, with no issue appearing twice and id itself never
-// appearing.
+// RelatedTo returns every issue joined to id by a relation edge — any of the
+// seven types IsRelation reports true for — in either direction, with no issue
+// appearing twice and id itself never appearing.
 //
 // Both directions, because the edge's direction is a fact about which record
 // holds the row rather than about which issue is the useful context: a reader
@@ -177,8 +177,8 @@ func (s *Snapshot) RelatedTo(id string) []*Issue {
 // so a pair that claims both "supersedes" and "caused-by" doesn't have one
 // side's word silently overridden by the other's.
 func (s *Snapshot) RelationTo(focusID, otherID string) (DepType, bool) {
-	own := relationEdge(s.byID[focusID], otherID)
-	theirs := relationEdge(s.byID[otherID], focusID)
+	own := s.relationEdge(s.byID[focusID], otherID)
+	theirs := s.relationEdge(s.byID[otherID], focusID)
 
 	switch {
 	case ownPrevails(own, theirs):
@@ -345,6 +345,27 @@ func (s *Snapshot) indexParentEdge(issue *Issue, dep Dependency, ownParent map[*
 	s.children[dep.DependsOnID] = append(s.children[dep.DependsOnID], issue)
 }
 
+// relationEdge returns the type of the relation edge issue declares on target,
+// or "" when there is none. A nil issue has no edges, which is the not-in-this
+// -snapshot case rather than an error.
+//
+// dep.DependsOnID is resolved through canonical before the comparison, for the
+// same reason indexEdge resolves it when building the reverse index: the row
+// names whatever id target used to carry, and RelationTo must agree with
+// RelatedTo about which pair of issues that row connects.
+func (s *Snapshot) relationEdge(issue *Issue, target string) DepType {
+	if issue == nil {
+		return ""
+	}
+	for _, dep := range issue.Dependencies {
+		if s.canonical(dep.DependsOnID) == target && dep.Type.IsRelation() {
+			return dep.Type
+		}
+	}
+
+	return ""
+}
+
 // dedupeIssues removes repeated *Issue pointers while preserving order.
 // Identity, not id: two records can share an id, and both are real issues that
 // should each appear.
@@ -360,22 +381,6 @@ func dedupeIssues(issues []*Issue) []*Issue {
 	}
 
 	return out
-}
-
-// relationEdge returns the type of the relation edge issue declares on target,
-// or "" when there is none. A nil issue has no edges, which is the not-in-this
-// -snapshot case rather than an error.
-func relationEdge(issue *Issue, target string) DepType {
-	if issue == nil {
-		return ""
-	}
-	for _, dep := range issue.Dependencies {
-		if dep.DependsOnID == target && dep.Type.IsRelation() {
-			return dep.Type
-		}
-	}
-
-	return ""
 }
 
 // isGenericRelation reports whether a type is one of the two that mean only

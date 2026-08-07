@@ -123,6 +123,33 @@ func (s *deriveTestSuite) TestUnknownIDIsNeitherBlockedNorReady() {
 	s.Empty(s.snap.Blockers("does-not-exist"))
 }
 
+func (s *deriveTestSuite) TestBlockingFollowsAFormerID() {
+	// br leaves a tombstone at the renamed id. Reading that tombstone as a
+	// satisfied blocker made Dependents and Blockers contradict each other:
+	// the reverse index said b-new blocks a, the forward derivation said
+	// nothing blocked a.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "a", Status: beads.StatusOpen, Dependencies: []beads.Dependency{
+			{IssueID: "a", DependsOnID: "b-old", Type: beads.DepBlocks},
+		}},
+		{ID: "b-new", Status: beads.StatusOpen, FormerIDs: []string{"b-old"}},
+		{ID: "b-old", Status: beads.StatusTombstone},
+	})
+
+	s.True(snap.IsBlocked("a"), "the renamed blocker is still open")
+	s.False(snap.IsReady("a"))
+
+	blockers := snap.Blockers("a")
+	s.Require().Len(blockers, 1)
+	s.Equal("b-new", blockers[0].ID)
+
+	s.Empty(snap.DanglingBlockers("a"), "a resolvable former id is not dangling")
+
+	dependents := snap.Dependents("b-new")
+	s.Require().Len(dependents, 1)
+	s.Equal("a", dependents[0].ID, "reverse index agrees with the forward derivation")
+}
+
 // TestMatchesBrReady is the anchor test: it re-derives readiness over a real
 // workspace and compares against br itself. If this drifts, one of the two is
 // wrong and it is worth knowing which.
@@ -199,13 +226,20 @@ func (s *deriveTestSuite) TestMatchesBrBlocked() {
 		s.T().Skip("br blocked failed in that workspace")
 	}
 
-	// Same envelope as TestMatchesBrReady; see the note there.
+	// Same envelope as TestMatchesBrReady; see the note there. `br blocked`
+	// additionally defaults to limit: 50, unlike `br ready` (limit: 0, i.e.
+	// unbounded), so HasMore is decoded and checked below — otherwise a
+	// workspace with more than 50 blocked issues would compare one page of
+	// `want` against the full derivation in `got` and fail for a pagination
+	// artifact that has nothing to do with the derivation being tested.
 	var reported struct {
 		Issues []struct {
 			ID string `json:"id"`
 		} `json:"issues"`
+		HasMore bool `json:"has_more"`
 	}
 	s.Require().NoError(json.Unmarshal(out, &reported))
+	s.Require().False(reported.HasMore, "br blocked paginated; the comparison below would be against one page")
 
 	want := make([]string, 0, len(reported.Issues))
 	for _, r := range reported.Issues {

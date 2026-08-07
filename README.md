@@ -239,10 +239,9 @@ These are documented deliberately rather than hidden.
 - **Ready is hardcoded to `status == open`.** `br` lets a project widen the
   ready status group via `workflow.status_groups.ready` in
   `.beads/policy.yaml`. `bv` ignores that file — its ready count always means
-  "open, unblocked, not deferred, pinned, ephemeral or a template, and not a
-  throwaway issue (an id containing `-wisp-`)" — so a project that has
-  reconfigured its ready group will see `bv`'s ready count disagree with
-  `br ready`.
+  "open, unblocked, not deferred, and not a throwaway issue (an id containing
+  `-wisp-`)" — so a project that has reconfigured its ready group will see
+  `bv`'s ready count disagree with `br ready`.
 - **`bv`'s "open" folds in `in_progress`; `br stats` does not.** See The
   status bar above.
 - **Yank needs OSC 52, and needs something selected.** The `y` key copies the

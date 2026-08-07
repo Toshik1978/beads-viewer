@@ -717,3 +717,69 @@ func (s *snapshotTestSuite) TestFormerIDResolutionOnTheBrFixture() {
 	s.Require().True(ok)
 	s.Equal("fx-9hy.1", followed.ID, "must follow br's rename past its tombstone")
 }
+
+func (s *snapshotTestSuite) TestRelationToFollowsAFormerID() {
+	// The edge names the id b used to carry. RelatedTo already resolves it;
+	// RelationTo must agree, or the pair renders under the generic label
+	// instead of the specific one it actually declares.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "a", Dependencies: []beads.Dependency{
+			{IssueID: "a", DependsOnID: "b-old", Type: beads.DepSupersedes},
+		}},
+		{ID: "b-new", FormerIDs: []string{"b-old"}},
+		{ID: "b-old", Status: beads.StatusTombstone},
+	})
+
+	depType, forward := snap.RelationTo("a", "b-new")
+	s.Equal(beads.DepSupersedes, depType)
+	s.True(forward)
+
+	reverse, reverseForward := snap.RelationTo("b-new", "a")
+	s.Equal(beads.DepSupersedes, reverse)
+	s.False(reverseForward)
+}
+
+func (s *snapshotTestSuite) TestRelationEdgesOnTheBrFixture() {
+	// The fixture is real br 1.4.0 output rather than a hand-built snapshot,
+	// which is what it exists to exercise: one edge of every relation type,
+	// run through RelatedTo and RelationTo rather than merely asserted present.
+	issues, err := beads.LoadIssues(filepath.Join("testdata", "br140.jsonl"))
+	s.Require().NoError(err)
+	snap := beads.NewSnapshot(issues)
+
+	cases := []struct {
+		source, target string
+		depType        beads.DepType
+	}{
+		{"fx-gyy", "fx-9fi", beads.DepRelatesTo},
+		{"fx-pob", "fx-ito", beads.DepDuplicates},
+		{"fx-wp4", "fx-3zt", beads.DepSupersedes},
+		{"fx-js8", "fx-aum", beads.DepCausedBy},
+		{"fx-k4r", "fx-8qr", beads.DepRepliesTo},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.depType), func() {
+			s.Contains(idsOf(snap.RelatedTo(tc.source)), tc.target, "declaring end")
+			s.Contains(idsOf(snap.RelatedTo(tc.target)), tc.source, "receiving end")
+
+			forward, isForward := snap.RelationTo(tc.source, tc.target)
+			s.Equal(tc.depType, forward)
+			s.True(isForward, "the declaring end reports forward")
+
+			reverse, isReverseForward := snap.RelationTo(tc.target, tc.source)
+			s.Equal(tc.depType, reverse)
+			s.False(isReverseForward, "the receiving end reports reverse")
+		})
+	}
+}
+
+// idsOf collects the ids of a slice of issues, for membership assertions that
+// do not care about order.
+func idsOf(issues []*beads.Issue) []string {
+	ids := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		ids = append(ids, issue.ID)
+	}
+
+	return ids
+}

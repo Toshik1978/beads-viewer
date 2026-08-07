@@ -131,8 +131,9 @@ The same construction pass also builds a reverse index. Each `Issue`'s own
 `Dependencies` only says what blocks *it* — the forward direction. `Snapshot`
 additionally indexes `dependents` (every issue that declares a dependency on a
 given id, i.e. what that id blocks) and `relatives` (every issue joined to it
-by a related or discovered-from edge), both keyed by id, in the same single
-pass. "What does this block" and "what is related to this" are therefore
+by a relation edge — any of the seven types `DepType.IsRelation` reports true
+for), both keyed by id, in the same single pass. "What does this block" and
+"what is related to this" are therefore
 answered by a map lookup rather than a scan of every issue in the workspace —
 a cost the dependency view pays on every re-root and every reload, so a
 linear scan there is not a one-off. `detail.renderBlocks` used to do exactly
