@@ -71,17 +71,27 @@ func New(log *slog.Logger, path string, debounce time.Duration) (*Watcher, error
 // Events delivers one value per debounced burst of changes.
 func (w *Watcher) Events() <-chan struct{} { return w.events }
 
-// Close stops watching. It is safe to call more than once.
+// Close stops watching and waits for the events channel to close. It is safe
+// to call more than once.
 //
-// w.events is deliberately never closed here, leaving forward()
-// (cmd/bv/main.go) blocked forever on `range watcher.Events()` afterward.
-// Accepted, not fixed: Close only ever runs from run()'s deferred cleanup,
-// immediately before the process exits, so nothing outlives it in practice.
+// Once it returns, a consumer ranging over Events() has been released rather
+// than left parked on a channel nothing will ever send to again. That costs
+// nothing today — Close runs from main's deferred cleanup immediately before
+// the process exits — but it is what makes a second watcher safe to start in
+// the same process, for a workspace switch or a daemon mode, without leaking
+// the first one's consumer goroutine.
+//
+// The drain below is both the wait and the release: run closes w.events on
+// its way out and is its only sender, so ranging here returns exactly when
+// that goroutine has finished. It cannot deadlock, because run's only send is
+// non-blocking (see notify) and its every branch returns on w.done.
 func (w *Watcher) Close() error {
 	var err error
 	w.closer.Do(func() {
 		close(w.done)
 		err = w.fsw.Close()
+		for range w.events { //nolint:revive // draining until run closes it is the wait
+		}
 	})
 	if err != nil {
 		return fmt.Errorf("close watcher: %w", err)
@@ -97,6 +107,13 @@ func (w *Watcher) Close() error {
 // once at the first event of a burst and is never reset, so a sustained
 // stream cannot defer the reload past maxDebounce.
 func (w *Watcher) run(debounce time.Duration) {
+	// Closed here rather than in Close because this goroutine is the only
+	// sender: closing a channel out from under a send panics, and no amount
+	// of care at the call site fixes that once the two live in different
+	// goroutines. Closing on the sender's way out is the one placement where
+	// the race cannot arise.
+	defer close(w.events)
+
 	debounceTimer := time.NewTimer(debounce)
 	stopTimer(debounceTimer)
 	defer debounceTimer.Stop()

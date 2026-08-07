@@ -154,6 +154,40 @@ func (s *watchTestSuite) TestMissingDirectoryIsAnError() {
 	s.Error(err)
 }
 
+// TestCloseReleasesAConsumer pins the guarantee cmd/bv's forward goroutine
+// rests on: ranging over Events() ends when the watcher does. Against the
+// original code — which closed w.done and the fsnotify watcher but never
+// w.events — this test times out, and every restarted watcher would strand
+// one goroutine per restart.
+func (s *watchTestSuite) TestCloseReleasesAConsumer() {
+	dir := s.T().TempDir()
+	w := s.newWatcher(filepath.Join(dir, "issues.jsonl"), time.Millisecond)
+
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for {
+			if _, open := <-w.Events(); !open {
+				return
+			}
+		}
+	}()
+
+	s.Require().NoError(w.Close())
+
+	select {
+	case <-drained:
+	case <-time.After(2 * time.Second):
+		s.FailNow("a consumer ranging over Events() was left blocked after Close returned")
+	}
+
+	// Close waits rather than merely arranging: by the time it returns, the
+	// channel is observably closed, so a caller may start a replacement
+	// watcher immediately instead of guessing when the old one let go.
+	_, open := <-w.Events()
+	s.False(open, "Events() must be closed once Close has returned")
+}
+
 func (s *watchTestSuite) TestCloseIsIdempotent() {
 	dir := s.T().TempDir()
 	w := s.newWatcher(filepath.Join(dir, "issues.jsonl"), time.Millisecond)
