@@ -62,7 +62,13 @@ type Counts struct {
 // checks the ancestor's status now, and inherit_test.go's h-shut-* fixtures
 // pin both halves of the correction: a closed ancestor hands nothing down,
 // and a closed link mid-chain does not hide a live blocked ancestor above it.
+// Every rule here reads the workspace, not the filtered view of it, which is
+// what the origin() call at the top of each derivation is for; see Snapshot's
+// unfiltered field for why derivation and display part company at exactly this
+// line.
 func (s *Snapshot) IsBlocked(id string) bool {
+	s = s.origin()
+
 	issue, ok := s.byID[id]
 	if !ok {
 		return false
@@ -86,6 +92,8 @@ func (s *Snapshot) IsBlocked(id string) bool {
 // DanglingBlockers below exist so such a caller can say which of the three
 // applies without re-deriving any of them for itself.
 func (s *Snapshot) Blockers(id string) []*Issue {
+	s = s.origin()
+
 	issue, ok := s.byID[id]
 	if !ok {
 		return nil
@@ -113,6 +121,8 @@ func (s *Snapshot) Blockers(id string) []*Issue {
 // it via workflow.status_groups.ready in .beads/policy.yaml; bv ignores that
 // file, which is a documented divergence rather than an oversight.
 func (s *Snapshot) IsReady(id string) bool {
+	s = s.origin()
+
 	issue, ok := s.byID[id]
 	if !ok {
 		return false
@@ -137,6 +147,8 @@ func (s *Snapshot) IsReady(id string) bool {
 // to go and look at: an intermediate parent that is itself only blocked by
 // inheritance explains nothing the child does not already know.
 func (s *Snapshot) BlockedAncestor(id string) (*Issue, bool) {
+	s = s.origin()
+
 	issue, ok := s.byID[id]
 	if !ok {
 		return nil, false
@@ -149,6 +161,8 @@ func (s *Snapshot) BlockedAncestor(id string) (*Issue, bool) {
 // blocks this issue. See blockedByOpenChild for what that rule is and why it
 // is neither a dependency edge nor inherited downward.
 func (s *Snapshot) BlockedByOpenChild(id string) bool {
+	s = s.origin()
+
 	issue, ok := s.byID[id]
 	if !ok {
 		return false
@@ -178,6 +192,8 @@ func (s *Snapshot) BlockedByOpenChild(id string) bool {
 // working the moment a fourth exclusion joins s.blocks: this list would keep
 // reporting the edges that rule now excludes, and nothing would fail.
 func (s *Snapshot) DanglingBlockers(id string) []string {
+	s = s.origin()
+
 	issue, ok := s.byID[id]
 	if !ok {
 		return nil
@@ -217,6 +233,20 @@ func (s *Snapshot) Counts() Counts {
 	}
 
 	return counts
+}
+
+// origin returns the snapshot every derivation above resolves against: the
+// unnarrowed one this was filtered from, or s itself when s is already that.
+// It is idempotent by construction — Filter.Apply is the only writer of the
+// field and always records the origin rather than its own input — so the
+// derivations can reassign their receiver through it once and then read the
+// indexes directly, with no second hop to consider.
+func (s *Snapshot) origin() *Snapshot {
+	if s.unfiltered != nil {
+		return s.unfiltered
+	}
+
+	return s
 }
 
 // blockedByOpenChild reports whether an epic is withheld purely because work

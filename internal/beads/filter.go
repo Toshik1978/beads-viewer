@@ -74,6 +74,13 @@ func (f Filter) Any(s *Snapshot) bool {
 // Re-indexing through NewSnapshot rather than copying the parent's indexes is
 // deliberate: the narrowed set has its own hierarchy, and a stale children map
 // would point at issues the filter removed.
+//
+// That is the right answer for what the views draw and the wrong one for what
+// they derive — an issue's blockers are a fact about the workspace, not about
+// what survived a filter — so the result also records where it came from, and
+// derive.go's rules resolve against that instead. See Snapshot's unfiltered
+// field. Narrowing an already-narrowed snapshot records the same origin rather
+// than the intermediate, so the rule holds however many filters are composed.
 func (f Filter) Apply(s *Snapshot) *Snapshot {
 	kept := make([]Issue, 0, s.Len())
 	for _, issue := range s.issues {
@@ -82,7 +89,10 @@ func (f Filter) Apply(s *Snapshot) *Snapshot {
 		}
 	}
 
-	return NewSnapshot(kept)
+	narrowed := NewSnapshot(kept)
+	narrowed.unfiltered = s.origin()
+
+	return narrowed
 }
 
 // Describe renders the active criteria for the status bar, empty when nothing

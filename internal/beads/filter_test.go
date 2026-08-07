@@ -148,6 +148,142 @@ func (s *filterTestSuite) TestApplyPreservesHierarchy() {
 	s.Len(got.Children("p"), 1)
 }
 
+// TestApplyKeepsASatisfiedBlockerSatisfied is the reported bug, minimised: an
+// issue whose only blocker is closed reads as blocked the moment hide-closed
+// removes that blocker from the narrowed snapshot, because blocks() treats a
+// target absent from byID as unresolvable and therefore still blocking. That
+// rule is right about a workspace and wrong about a filter's leftovers, so the
+// narrowed snapshot has to answer derived questions from what it was narrowed
+// from.
+func (s *filterTestSuite) TestApplyKeepsASatisfiedBlockerSatisfied() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "done", Title: "prerequisite", Status: beads.StatusClosed},
+		{
+			ID: "work", Title: "in flight", Status: beads.StatusInProgress,
+			Dependencies: []beads.Dependency{
+				{IssueID: "work", DependsOnID: "done", Type: beads.DepBlocks},
+			},
+		},
+	})
+
+	got := beads.Filter{HideClosed: true}.Apply(snap)
+
+	s.Require().Equal(1, got.Len())
+	s.False(got.IsBlocked("work"))
+	s.Empty(got.DanglingBlockers("work"))
+}
+
+// TestApplyKeepsAnUnblockedIssueReady is the same failure seen through the
+// readiness rule rather than the blocked one: hide-closed must not cost an
+// open issue its ready marker, which is what the list's and the board's
+// stats are counting.
+func (s *filterTestSuite) TestApplyKeepsAnUnblockedIssueReady() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "done", Title: "prerequisite", Status: beads.StatusClosed},
+		{
+			ID: "work", Title: "next up", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "work", DependsOnID: "done", Type: beads.DepBlocks},
+			},
+		},
+	})
+
+	s.True(beads.Filter{HideClosed: true}.Apply(snap).IsReady("work"))
+}
+
+// TestApplyKeepsInheritedBlockednessThroughAHiddenAncestor covers the mirror
+// image of the case above: a filter that hides an ancestor must not shed the
+// block that ancestor was handing down, or a narrowed board would show work
+// as actionable that nothing can be done about.
+func (s *filterTestSuite) TestApplyKeepsInheritedBlockednessThroughAHiddenAncestor() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "wall", Title: "unfinished prerequisite", Status: beads.StatusOpen},
+		{
+			ID: "parent", Title: "held up", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "parent", DependsOnID: "wall", Type: beads.DepBlocks},
+			},
+		},
+		{
+			ID: "kid", Title: "child keep", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "kid", DependsOnID: "parent", Type: beads.DepParentChild},
+			},
+		},
+	})
+
+	got := beads.Filter{Text: "keep"}.Apply(snap)
+
+	s.Require().Equal(1, got.Len())
+	s.True(got.IsBlocked("kid"))
+	ancestor, ok := got.BlockedAncestor("kid")
+	s.Require().True(ok)
+	s.Equal("parent", ancestor.ID)
+}
+
+// TestApplyKeepsAnEpicBlockedByAHiddenOpenChild pins the third of IsBlocked's
+// rules, which reads the children index rather than an edge: a filter that
+// hides the open child must not close-order the epic into readiness.
+func (s *filterTestSuite) TestApplyKeepsAnEpicBlockedByAHiddenOpenChild() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "epic", Title: "epic keep", Status: beads.StatusOpen, IssueType: beads.TypeEpic},
+		{
+			ID: "kid", Title: "still going", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "kid", DependsOnID: "epic", Type: beads.DepParentChild},
+			},
+		},
+	})
+
+	got := beads.Filter{Text: "keep"}.Apply(snap)
+
+	s.Require().Equal(1, got.Len())
+	s.True(got.BlockedByOpenChild("epic"))
+	s.True(got.IsBlocked("epic"))
+}
+
+// TestApplyKeepsNamingABlockerItHid keeps Blockers answering with the issue
+// itself rather than falling back to the dangling-id path, so a detail or
+// dependency pane rendered from a narrowed snapshot still says which issue is
+// in the way instead of reporting a bare missing id.
+func (s *filterTestSuite) TestApplyKeepsNamingABlockerItHid() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "wall", Title: "unfinished prerequisite", Status: beads.StatusOpen},
+		{
+			ID: "work", Title: "work keep", Status: beads.StatusOpen,
+			Dependencies: []beads.Dependency{
+				{IssueID: "work", DependsOnID: "wall", Type: beads.DepBlocks},
+			},
+		},
+	})
+
+	got := beads.Filter{Text: "keep"}.Apply(snap)
+
+	s.Require().Len(got.Blockers("work"), 1)
+	s.Equal("wall", got.Blockers("work")[0].ID)
+	s.Empty(got.DanglingBlockers("work"))
+}
+
+// TestApplyTwiceStillDerivesFromTheWorkspace pins the chaining rule: a second
+// narrowing must reach past the first to the unfiltered snapshot, not treat
+// the already-narrowed one as its workspace.
+func (s *filterTestSuite) TestApplyTwiceStillDerivesFromTheWorkspace() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "done", Title: "prerequisite", Status: beads.StatusClosed},
+		{
+			ID: "work", Title: "work keep", Status: beads.StatusInProgress,
+			Dependencies: []beads.Dependency{
+				{IssueID: "work", DependsOnID: "done", Type: beads.DepBlocks},
+			},
+		},
+	})
+
+	got := beads.Filter{Text: "keep"}.Apply(beads.Filter{HideClosed: true}.Apply(snap))
+
+	s.Require().Equal(1, got.Len())
+	s.False(got.IsBlocked("work"))
+}
+
 // TestAnyAgreesWithApply pins Any as a short-circuiting equivalent of
 // checking Apply's own result for emptiness, across the same criteria the
 // suite above already exercises against Apply directly — this is what

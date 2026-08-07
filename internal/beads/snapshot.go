@@ -38,6 +38,18 @@ type Snapshot struct {
 	// Kept out of byID so that indexing can normalise edge targets through it
 	// deliberately, rather than resolving them by accident.
 	aliases map[string]string
+	// unfiltered is the snapshot Filter.Apply narrowed this one from, and nil
+	// when this snapshot is itself unnarrowed. It is what the derivations in
+	// derive.go resolve against, because they answer questions about the
+	// workspace rather than about what a filter left on screen: an issue whose
+	// only blocker is closed is not blocked, and hide-closed removing that
+	// blocker must not make it read as one — blocks() has no way to tell a
+	// filtered-out target from a genuinely missing id, and is right to treat a
+	// missing one as unresolved. Display stays this snapshot's own job; only
+	// derivation delegates. Filter.Apply always points this at the unnarrowed
+	// origin rather than at its immediate input, so chained filtering cannot
+	// leave a derivation resolving against another filter's leftovers.
+	unfiltered *Snapshot
 }
 
 // NewSnapshot indexes a decoded issue set.
