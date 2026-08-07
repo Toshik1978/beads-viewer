@@ -236,7 +236,10 @@ func (s *depsTestSuite) TestRelatedColumnTagsEachEdgeKind() {
 	}
 
 	s.Equal(depsview.RelationRelated, byID["sibling"])
-	s.Equal(depsview.RelationDiscovered, byID["spike"])
+	// spike declares "spike discovered-from focus" — spike is the declaring
+	// end, so on focus's own pane (the receiving end) the label is the
+	// reverse word: focus led to spike's discovery, not the other way round.
+	s.Equal(depsview.RelationLedTo, byID["spike"])
 }
 
 func (s *depsTestSuite) TestFocusedColumnAgreesWithTheRestOnADuplicateID() {
@@ -286,20 +289,26 @@ func (s *depsTestSuite) TestFocusedColumnAgreesWithTheRestOnADuplicateID() {
 }
 
 func (s *depsTestSuite) TestRelatedColumnPrefersDiscoveredFromOnAContestedPair() {
+	// discovered-from is the more specific claim and wins a contested pair
+	// regardless of which side declares it — but which side declares it still
+	// decides whether focus's own pane reads the forward or reverse word.
 	for _, tc := range []struct {
 		name          string
 		focusDeclares beads.DepType
 		otherDeclares beads.DepType
+		want          depsview.Relation
 	}{
 		{
 			name:          "focus says related, other says discovered-from",
 			focusDeclares: beads.DepRelated,
 			otherDeclares: beads.DepDiscoveredFrom,
+			want:          depsview.RelationLedTo,
 		},
 		{
 			name:          "focus says discovered-from, other says related",
 			focusDeclares: beads.DepDiscoveredFrom,
 			otherDeclares: beads.DepRelated,
+			want:          depsview.RelationDiscovered,
 		},
 	} {
 		s.Run(tc.name, func() {
@@ -310,8 +319,42 @@ func (s *depsTestSuite) TestRelatedColumnPrefersDiscoveredFromOnAContestedPair()
 
 			entries := depsview.Columns(snap, "focus")[3].Entries
 			s.Require().Len(entries, 1)
-			s.Equal(depsview.RelationDiscovered, entries[0].Relation,
-				"discovered-from is the more specific claim and wins a contested pair")
+			s.Equal(tc.want, entries[0].Relation)
+		})
+	}
+}
+
+func (s *depsTestSuite) TestRelationLabelsFollowDirection() {
+	cases := []struct {
+		depType beads.DepType
+		forward depsview.Relation
+		reverse depsview.Relation
+	}{
+		{beads.DepRelatesTo, depsview.RelationRelated, depsview.RelationRelated},
+		{beads.DepDiscoveredFrom, depsview.RelationDiscovered, depsview.RelationLedTo},
+		{beads.DepDuplicates, depsview.RelationDuplicates, depsview.RelationDuplicatedBy},
+		{beads.DepSupersedes, depsview.RelationSupersedes, depsview.RelationSupersededBy},
+		{beads.DepCausedBy, depsview.RelationCausedBy, depsview.RelationCaused},
+		{beads.DepRepliesTo, depsview.RelationRepliesTo, depsview.RelationReply},
+	}
+
+	for _, tc := range cases {
+		s.Run(string(tc.depType), func() {
+			snap := beads.NewSnapshot([]beads.Issue{
+				{ID: "a", Dependencies: []beads.Dependency{
+					{IssueID: "a", DependsOnID: "b", Type: tc.depType},
+				}},
+				{ID: "b"},
+			})
+
+			// The related column is the fourth Columns returns.
+			fromA := depsview.Columns(snap, "a")[3].Entries
+			s.Require().Len(fromA, 1)
+			s.Equal(tc.forward, fromA[0].Relation, "declaring end")
+
+			fromB := depsview.Columns(snap, "b")[3].Entries
+			s.Require().Len(fromB, 1)
+			s.Equal(tc.reverse, fromB[0].Relation, "receiving end")
 		})
 	}
 }

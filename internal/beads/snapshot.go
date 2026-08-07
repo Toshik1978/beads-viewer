@@ -152,6 +152,31 @@ func (s *Snapshot) RelatedTo(id string) []*Issue {
 	return slices.Clone(s.relatives[id])
 }
 
+// RelationTo reports the relation edge between focus and other, and whether
+// focus is the end that declares it.
+//
+// Only relation edges are considered: a blocks or parent-child row between the
+// same pair reports nothing, because those are answered by Blockers and
+// Children and would otherwise show up twice under a misleading label.
+//
+// When both ends declare an edge, the more specific one wins from either
+// side. "related" and "relates-to" are the fallbacks for when nothing more
+// specific is known, so a pair that says both "related" and "discovered-from"
+// is telling us about provenance and should read that way from both ends.
+func (s *Snapshot) RelationTo(focusID, otherID string) (DepType, bool) {
+	own := relationEdge(s.byID[focusID], otherID)
+	theirs := relationEdge(s.byID[otherID], focusID)
+
+	switch {
+	case own != "" && (theirs == "" || isGenericRelation(theirs)):
+		return own, true
+	case theirs != "":
+		return theirs, false
+	default:
+		return "", false
+	}
+}
+
 // indexHierarchy fills children, parentOf and roots from parent-child edges.
 //
 // Each record's parent-child membership is resolved from its own
@@ -272,6 +297,28 @@ func dedupeIssues(issues []*Issue) []*Issue {
 	}
 
 	return out
+}
+
+// relationEdge returns the type of the relation edge issue declares on target,
+// or "" when there is none. A nil issue has no edges, which is the not-in-this
+// -snapshot case rather than an error.
+func relationEdge(issue *Issue, target string) DepType {
+	if issue == nil {
+		return ""
+	}
+	for _, dep := range issue.Dependencies {
+		if dep.DependsOnID == target && dep.Type.IsRelation() {
+			return dep.Type
+		}
+	}
+
+	return ""
+}
+
+// isGenericRelation reports whether a type is one of the two that mean only
+// "these are connected" — the claims any more specific type outranks.
+func isGenericRelation(d DepType) bool {
+	return d == DepRelated || d == DepRelatesTo
 }
 
 // cloneIssue copies an Issue and every field through which a caller could

@@ -21,14 +21,23 @@ type Relation string
 // string: the middle column's single card is the subject, not a relation to
 // it, so there is nothing to label it with.
 const (
-	RelationFocus      Relation = ""
-	RelationBlocker    Relation = "blocker"
-	RelationDangling   Relation = "not in workspace"
-	RelationInherited  Relation = "via parent"
-	RelationOpenChild  Relation = "open child"
-	RelationBlocks     Relation = "blocks"
-	RelationRelated    Relation = "related"
-	RelationDiscovered Relation = "discovered from"
+	RelationFocus        Relation = ""
+	RelationBlocker      Relation = "blocker"
+	RelationDangling     Relation = "not in workspace"
+	RelationInherited    Relation = "via parent"
+	RelationOpenChild    Relation = "open child"
+	RelationBlocks       Relation = "blocks"
+	RelationRelated      Relation = "related"
+	RelationDiscovered   Relation = "discovered from"
+	RelationLedTo        Relation = "led to"
+	RelationDuplicates   Relation = "duplicates"
+	RelationDuplicatedBy Relation = "duplicated by"
+	RelationSupersedes   Relation = "supersedes"
+	RelationSupersededBy Relation = "superseded by"
+	RelationCausedBy     Relation = "caused by"
+	RelationCaused       Relation = "caused"
+	RelationRepliesTo    Relation = "replies to"
+	RelationReply        Relation = "reply"
 	// RelationNotInView labels the middle column when the focused id has
 	// left the current snapshot — the active filter narrowed it out, or a
 	// reload dropped it — but the view is still about it. See focusEntries.
@@ -131,30 +140,69 @@ func focusEntries(snap *beads.Snapshot, focusID string) []Entry {
 	return []Entry{{Issue: issue, ID: issue.ID, Relation: RelationFocus}}
 }
 
-// relatedEntries tags each of RelatedTo's results with the edge kind that
-// produced it. RelatedTo answers which issues are connected but not how, and
-// "related" and "discovered from" mean different things to a reader.
+// relatedEntries tags each of RelatedTo's results with the edge that produced
+// it, in the direction this focus sees it. RelatedTo answers which issues are
+// connected but not how, and "duplicates" and "caused by" mean very different
+// things to a reader.
 //
-// When a pair declares both — one side says related, the other says
-// discovered-from — discovered-from wins regardless of which side is checked
-// first: it is the more specific claim about provenance, where "related" is
-// only the fallback for when nothing more specific is known.
+// Direction matters because most of these edges are asymmetric. Labelling both
+// ends "supersedes" would state the opposite of the truth on the superseded
+// issue — a bug discovered-from has had all along, fixed here by the same rule.
 func relatedEntries(snap *beads.Snapshot, focusID string) []Entry {
-	focus, ok := snap.ByID(focusID)
-
 	entries := make([]Entry, 0, len(snap.RelatedTo(focusID)))
 	for _, other := range snap.RelatedTo(focusID) {
-		relation := RelationRelated
-		if ok && edgeKind(focus, other.ID) == beads.DepDiscoveredFrom {
-			relation = RelationDiscovered
-		}
-		if edgeKind(other, focusID) == beads.DepDiscoveredFrom {
-			relation = RelationDiscovered
-		}
-		entries = append(entries, Entry{Issue: other, ID: other.ID, Relation: relation})
+		depType, forward := snap.RelationTo(focusID, other.ID)
+		entries = append(entries, Entry{
+			Issue:    other,
+			ID:       other.ID,
+			Relation: relationLabel(depType, forward),
+		})
 	}
 
 	return withoutID(entries, focusID)
+}
+
+// relationLabel names one edge from the end that is looking at it.
+func relationLabel(depType beads.DepType, forward bool) Relation {
+	fwd, rev := relationWords(depType)
+	if forward {
+		return fwd
+	}
+
+	return rev
+}
+
+// relationWords returns an edge's forward and reverse labels. Split from
+// relationLabel so the direction choice stays one line and this stays a flat
+// table; gochecknoglobals rules out expressing it as a package-level map.
+//
+// Written as an if-chain rather than a switch on purpose. golangci-lint's
+// exhaustive rule fires on a switch over beads.DepType unless every one of
+// the eleven types is listed, and listing the eight that share the fallback
+// then trips revive for identical branches. Task 3 hit the same wall in
+// DepType.IsRelation and resolved it the same way.
+//
+// The fallthrough covers "related", "relates-to" and anything unrecognised:
+// all mean only that two issues are connected, which reads the same from
+// either end.
+func relationWords(depType beads.DepType) (Relation, Relation) {
+	if depType == beads.DepDiscoveredFrom {
+		return RelationDiscovered, RelationLedTo
+	}
+	if depType == beads.DepDuplicates {
+		return RelationDuplicates, RelationDuplicatedBy
+	}
+	if depType == beads.DepSupersedes {
+		return RelationSupersedes, RelationSupersededBy
+	}
+	if depType == beads.DepCausedBy {
+		return RelationCausedBy, RelationCaused
+	}
+	if depType == beads.DepRepliesTo {
+		return RelationRepliesTo, RelationReply
+	}
+
+	return RelationRelated, RelationRelated
 }
 
 // entriesFor wraps a plain issue slice as entries under one relation.
@@ -211,19 +259,4 @@ func dedupeEntries(entries []Entry) []Entry {
 	}
 
 	return kept
-}
-
-// edgeKind reports the type of the edge issue declares on target, or "" when
-// it declares none.
-func edgeKind(issue *beads.Issue, target string) beads.DepType {
-	if issue == nil {
-		return ""
-	}
-	for _, dep := range issue.Dependencies {
-		if dep.DependsOnID == target {
-			return dep.Type
-		}
-	}
-
-	return ""
 }

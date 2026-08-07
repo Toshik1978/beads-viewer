@@ -513,3 +513,63 @@ func (s *snapshotTestSuite) TestNewRelationTypesAreIndexed() {
 		})
 	}
 }
+
+func (s *snapshotTestSuite) TestRelationTo() {
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "a", Dependencies: []beads.Dependency{
+			{IssueID: "a", DependsOnID: "b", Type: beads.DepSupersedes},
+		}},
+		{ID: "b"},
+		{ID: "c"},
+	})
+
+	s.Run("declaring end reports forward", func() {
+		depType, forward := snap.RelationTo("a", "b")
+		s.Equal(beads.DepSupersedes, depType)
+		s.True(forward)
+	})
+
+	s.Run("receiving end reports reverse", func() {
+		depType, forward := snap.RelationTo("b", "a")
+		s.Equal(beads.DepSupersedes, depType)
+		s.False(forward)
+	})
+
+	s.Run("unrelated pair reports nothing", func() {
+		depType, forward := snap.RelationTo("a", "c")
+		s.Empty(string(depType))
+		s.False(forward)
+	})
+
+	s.Run("blocking edges are not relations", func() {
+		blocking := beads.NewSnapshot([]beads.Issue{
+			{ID: "x", Dependencies: []beads.Dependency{
+				{IssueID: "x", DependsOnID: "y", Type: beads.DepBlocks},
+			}},
+			{ID: "y"},
+		})
+		depType, _ := blocking.RelationTo("x", "y")
+		s.Empty(string(depType), "a blocks edge is not a relation")
+	})
+}
+
+func (s *snapshotTestSuite) TestRelationToPrefersTheSpecificClaim() {
+	// Both ends declare an edge. "related" is the fallback for when nothing
+	// more specific is known, so the specific claim wins from either side.
+	snap := beads.NewSnapshot([]beads.Issue{
+		{ID: "a", Dependencies: []beads.Dependency{
+			{IssueID: "a", DependsOnID: "b", Type: beads.DepRelated},
+		}},
+		{ID: "b", Dependencies: []beads.Dependency{
+			{IssueID: "b", DependsOnID: "a", Type: beads.DepDiscoveredFrom},
+		}},
+	})
+
+	fromA, forwardA := snap.RelationTo("a", "b")
+	s.Equal(beads.DepDiscoveredFrom, fromA)
+	s.False(forwardA, "b declares the specific edge, so a is the receiving end")
+
+	fromB, forwardB := snap.RelationTo("b", "a")
+	s.Equal(beads.DepDiscoveredFrom, fromB)
+	s.True(forwardB)
+}
