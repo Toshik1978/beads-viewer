@@ -74,12 +74,7 @@ func (s *Snapshot) IsBlocked(id string) bool {
 		return false
 	}
 
-	if s.blockedByDependency(issue) || s.blockedByOpenChild(issue) {
-		return true
-	}
-	_, inherited := s.blockedAncestor(issue)
-
-	return inherited
+	return s.blocked(issue)
 }
 
 // Blockers returns the live blocking issues present in this snapshot.
@@ -128,14 +123,7 @@ func (s *Snapshot) IsReady(id string) bool {
 		return false
 	}
 
-	switch {
-	case issue.Status != StatusOpen,
-		strings.Contains(issue.ID, wispMarker),
-		issue.DeferUntil != nil && issue.DeferUntil.After(time.Now()):
-		return false
-	default:
-		return !s.IsBlocked(id)
-	}
+	return s.ready(issue, s.blocked(issue))
 }
 
 // BlockedAncestor returns the nearest ancestor whose own dependency is what
@@ -211,7 +199,13 @@ func (s *Snapshot) DanglingBlockers(id string) []string {
 }
 
 // Counts tallies the snapshot for the status bar.
+//
+// The loop reads s.issues — what a filter left to show, which is what the
+// totals are about — while the blocked and ready tallies are derived against
+// the origin snapshot, which is what those questions are about. See
+// Snapshot.unfiltered for why the two part company here.
 func (s *Snapshot) Counts() Counts {
+	origin := s.origin()
 	counts := Counts{Total: len(s.issues)}
 
 	for _, issue := range s.issues {
@@ -223,12 +217,7 @@ func (s *Snapshot) Counts() Counts {
 			}
 		default:
 			counts.Open++
-			if s.IsBlocked(issue.ID) {
-				counts.Blocked++
-			}
-			if s.IsReady(issue.ID) {
-				counts.Ready++
-			}
+			origin.tallyOpen(issue.ID, &counts)
 		}
 	}
 
@@ -247,6 +236,74 @@ func (s *Snapshot) origin() *Snapshot {
 	}
 
 	return s
+}
+
+// blocked is IsBlocked's three rules, applied to a record already resolved
+// against the origin snapshot. Named separately so that a caller which needs
+// blockedness *and* readiness for the same issue can derive it once and pass
+// it on — see tallyOpen — rather than going through IsReady, which derives it
+// again.
+func (s *Snapshot) blocked(issue *Issue) bool {
+	if s.blockedByDependency(issue) || s.blockedByOpenChild(issue) {
+		return true
+	}
+	_, inherited := s.blockedAncestor(issue)
+
+	return inherited
+}
+
+// ready is IsReady's rules with blockedness supplied rather than derived.
+//
+// Taking it as a parameter rather than calling s.blocked keeps the rules in
+// one place while letting the caller decide how many times the expensive one
+// runs. The parameter is not an optimisation hook a caller may lie through:
+// passing anything but s.blocked(issue) reports readiness for an issue that
+// does not exist.
+func (s *Snapshot) ready(issue *Issue, blocked bool) bool {
+	switch {
+	case issue.Status != StatusOpen,
+		strings.Contains(issue.ID, wispMarker),
+		issue.DeferUntil != nil && issue.DeferUntil.After(time.Now()):
+		return false
+	default:
+		return !blocked
+	}
+}
+
+// tallyOpen adds one open issue to the blocked and ready tallies, deriving
+// blockedness once and handing it to the readiness rules.
+//
+// Counts used to ask IsBlocked and then IsReady, and IsReady ends in a second
+// IsBlocked: two index lookups and two walks of the parent chain per open
+// issue, on every frame, because the status bar recomputes its counts on each
+// render rather than caching them. Measured at roughly 0.4 ms a frame across
+// 10,000 issues — not enough to be felt on its own, which is why this stood
+// as an accepted duplication for several releases.
+//
+// What settled it is the other half. Two independent derivations can disagree
+// in a way one cannot: Blocked and Ready are disjoint only because IsReady
+// happens to end in !IsBlocked, so the moment those two resolve an issue
+// differently — a stale index, a divergence in how each finds its record —
+// the status bar could report one issue in both tallies and nothing would
+// fail. Sharing the derivation makes the two answers describe the same
+// record by construction, and the arithmetic guard in
+// inherit_test.go's TestCountsDoNotDoubleCount stops being the only thing
+// standing between the counts and that.
+//
+// s is the origin snapshot; the caller resolves it once for the whole loop.
+func (s *Snapshot) tallyOpen(id string, counts *Counts) {
+	issue, ok := s.byID[id]
+	if !ok {
+		return
+	}
+
+	blocked := s.blocked(issue)
+	if blocked {
+		counts.Blocked++
+	}
+	if s.ready(issue, blocked) {
+		counts.Ready++
+	}
 }
 
 // blockedByOpenChild reports whether an epic is withheld purely because work
