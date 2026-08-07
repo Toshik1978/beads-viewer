@@ -22,6 +22,12 @@ import (
 // the test that hung.
 const runLimit = 30 * time.Second
 
+// testVersion is injected into the binary under test through the same
+// -X main.version path .goreleaser.yaml uses at release time, so what
+// --version prints is checkable against a value this test chose rather than
+// against the "dev" default the source would print anyway.
+const testVersion = "0.0.0-main-test"
+
 // detachFromTerminal runs the child in a new session, so it has no
 // controlling terminal.
 //
@@ -53,14 +59,21 @@ type mainTestSuite struct {
 
 func (s *mainTestSuite) SetupSuite() {
 	s.binary = filepath.Join(s.T().TempDir(), "bv")
-	out, err := exec.CommandContext(s.T().Context(), "go", "build", "-o", s.binary, ".").CombinedOutput()
+	out, err := exec.CommandContext(s.T().Context(), "go", "build",
+		"-ldflags", "-X main.version="+testVersion, "-o", s.binary, ".").CombinedOutput()
 	s.Require().NoError(err, string(out))
 }
 
-func (s *mainTestSuite) TestVersionExitsZero() {
+// TestVersionNamesTheVersion asserts what the flag is for, not merely that it
+// printed. The previous assertion — non-empty output, exit zero — passes on a
+// usage dump, an error, or anything else the command might emit, so it could
+// not fail for the reason it was written for. Naming testVersion checks the
+// whole chain instead: the -X path .goreleaser.yaml sets, cobra's Version
+// wiring, and the string reaching stdout.
+func (s *mainTestSuite) TestVersionNamesTheVersion() {
 	out, err := exec.CommandContext(s.T().Context(), s.binary, "--version").CombinedOutput()
 	s.Require().NoError(err)
-	s.NotEmpty(strings.TrimSpace(string(out)))
+	s.Contains(string(out), testVersion)
 }
 
 func (s *mainTestSuite) TestMissingWorkspaceExitsOneWithGuidance() {
