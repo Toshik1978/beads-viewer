@@ -1,10 +1,10 @@
 package depsview
 
-// This file turns deps.go's columns into a bubbletea view: geometry, column
-// fitting and rendering, plus the two-dimensional cursor's own bookkeeping and
-// Reveal, which changes what the model is about rather than where its cursor
-// is. deps.go stays pure column construction; nav.go is what a keypress does
-// to the cursor and the focus.
+// This file holds the model's own state: its fields, the two-dimensional
+// cursor's bookkeeping, and Reveal, which changes what the model is about
+// rather than where its cursor is. Rendering — geometry, column fitting and
+// the card and heading lines — lives in render.go. deps.go stays pure column
+// construction; nav.go is what a keypress does to the cursor and the focus.
 
 import (
 	"github.com/Toshik1978/beads-viewer/internal/beads"
