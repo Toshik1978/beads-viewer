@@ -7,48 +7,17 @@ machinery it describes — `task changelog`, `task release:check`,
 match each other, and the machinery now exists.
 
 Do not run `git push` or `gh` against this repository outside the steps
-below, and never with `--force` against a shared branch. This repository
-currently has no remote at all, and nothing in this document creates one —
-see Step 1.2.
+below, and never with `--force` against a shared branch.
 
 ## Step 1 — first release only: re-initialise history, then tag
 
-This repository's current git history is working history from development and
-will be wiped before the project is ever published. **No tag exists yet, and
-none should be created against this history.** A tag created now would name a
-commit that will not exist once the history is replaced, and a dangling,
-orphaned tag sitting in an otherwise freshly initialised repository is the
-kind of thing that looks deliberate — and gets trusted by whoever finds it —
-rather than looking like the leftover it would actually be.
+Done, at `v1.0.0`: the development history was replaced with a fresh one
+before publication, `origin` was created against it, and the first tag was cut
+on the resulting history. Nothing in this step runs a second time — every
+release starts at Step 2.
 
-The first release therefore starts with an act this document has to name
-explicitly, not bury as a footnote:
-
-1. Re-initialise the repository: a fresh history, starting from the current
-   tree. `CHANGELOG.md`'s `v1.0.0` section is written as part of building the
-   release machinery, before this step ever runs, so it carries forward into
-   the new history intact — there is nothing left to write before tagging.
-   `check-release-version.sh` reads only the version out of that heading, not
-   the date, so if re-initialising happens on a different day than the
-   heading currently says, refresh the date — it costs nothing and keeps the
-   changelog honest.
-2. Create the GitHub repository and add it as `origin` (`git remote add
-   origin <url>`) — there is no remote until this point, and nothing later in
-   this document creates one. Once `origin` exists, re-check the
-   `release.github: {owner, name}` block in `.goreleaser.yaml`: GoReleaser
-   only infers those from the remote when the block is absent, and with it
-   present the pinned values win silently forever, so confirm they still
-   match `origin` (or drop the block now that inference works) before
-   tagging. Then create the `v1.0.0` tag against the resulting first commit,
-   and push both the branch and the tag. This is the publisher's first act
-   after re-initialising.
-
-**The first release ends here, at Step 1.** Its Step 1.1 already carries the
-finished `v1.0.0` changelog section forward, and its Step 1.2 already creates
-and pushes the `v1.0.0` tag — Steps 2 through 4 below have nothing left to do
-(the changelog is written, there is nothing new to commit), and Step 5 would
-tag `v1.0.0` a second time. Every release **after** the first skips Step 1
-entirely and starts at Step 2.
+The heading stays rather than being deleted so the numbering the rest of this
+document uses does not shift under the commits and prose that already cite it.
 
 ## Step 2 — generate the changelog entry
 
@@ -106,8 +75,8 @@ already public. Run them here, inspect `dist/*.tar.gz`, and only then move on.
 
 `task release:verify` checks that the tag matches the version the changelog
 documents, before anything is tagged — it creates nothing itself, so a failure
-here costs nothing to walk back. `origin` already exists by this point: Step
-1.2 created it on the first release, and it persists for every release after.
+here costs nothing to walk back. `origin` already exists by this point: Step 1
+created it on the first release, and it persists for every release after.
 
 Pushing the tag triggers the release workflow, which runs `task check` again,
 extracts the changelog section from Step 3, and publishes the four archives
