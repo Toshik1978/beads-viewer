@@ -227,10 +227,14 @@ Two things the numbers do not mean, worth being explicit about:
   `(N hidden)` and `hide closed` before you have pressed anything. Turning it
   off takes one of four things — `--hide-closed=false`, `hide_closed: false`
   in `config.yaml`, `BV_HIDE_CLOSED=false`, or pressing `c` during the
-  session. It is one filter shared by all four views — `c` toggles it
-  everywhere at once, and the choice is not persisted between runs. The
-  status bar's counts stay computed from every issue in the workspace either
-  way, alongside an `(N hidden)` indicator while it is on.
+  session. It is one filter shared by the views — `c` toggles it everywhere
+  at once, and the choice is not persisted between runs — with a single
+  exception: the board's status lane goes on showing closed issues, because
+  it already has a Closed column that sets them apart. Cycle the board to any
+  other lane with `s` and it hides them like everything else. The status
+  bar's counts stay computed from every issue in the workspace either way,
+  alongside an `(N hidden)` indicator while it is on, which goes quiet on the
+  one pane that is not hiding anything.
 
 ## Known divergences from `br`
 
