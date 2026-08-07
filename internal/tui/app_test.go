@@ -1093,18 +1093,23 @@ func (s *appTestSuite) TestBoardLaneOnlyShowsOnTheBoard() {
 	s.NotContains(m.View(), "Priority", "and disappear once another view is active")
 }
 
-// TestHiddenCountShowsOnEveryView replaces TestTreeHiddenCountOnlyShowsOn-
-// TheTree, which pinned the opposite: the count used to come from the tree's
+// TestHiddenCountFollowsTheSharedFilter replaces TestTreeHiddenCountOnlyShows-
+// OnTheTree, which pinned the opposite: the count used to come from the tree's
 // own local toggle, so it read 0 on the list and the board no matter what was
-// hidden. Hide-closed is one filter shared by all three views now, so the
-// indicator has to follow it everywhere — a count that vanished on a view
-// switch would now be reporting the wrong thing, not scoping itself.
+// hidden. Hide-closed is one filter shared by the views now, so the indicator
+// has to follow it — a count that vanished on a view switch would be reporting
+// the wrong thing, not scoping itself.
+//
+// The board is excluded from the loop and covered separately (see
+// TestTheHiddenCountIsSilentWhereNothingIsHidden): its status lane is exempt
+// from hide-closed, so there the indicator would describe a pane that is
+// showing the very issues it counts as hidden.
 //
 // The two tombstones in the fixture are what keep the count honest. They are
 // terminal, so beads.Counts folds them into Closed, but they are hidden with
 // the toggle off as well — a status bar reading Counts.Closed straight off
 // says "3 hidden" here when pressing 'c' hid exactly one issue.
-func (s *appTestSuite) TestHiddenCountShowsOnEveryView() {
+func (s *appTestSuite) TestHiddenCountFollowsTheSharedFilter() {
 	issues := []beads.Issue{
 		{ID: "bv-1", Title: "open one", Status: beads.StatusOpen},
 		{ID: "bv-2", Title: "closed one", Status: beads.StatusClosed},
@@ -1118,11 +1123,11 @@ func (s *appTestSuite) TestHiddenCountShowsOnEveryView() {
 
 	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 
-	for _, viewKey := range []rune{'1', '2', '3'} {
+	for _, viewKey := range []rune{'1', '2'} {
 		s.Run(string(viewKey), func() {
 			m.Update(tea.KeyPressMsg{Code: viewKey, Text: string(viewKey)})
 			s.Contains(ansi.Strip(m.View()), "1 hidden",
-				"the shared filter's hidden count must show on every view")
+				"the shared filter's hidden count must show on every view that hides")
 		})
 	}
 }
@@ -1140,16 +1145,19 @@ func closedParentIssues() []beads.Issue {
 	}
 }
 
-// TestHideClosedNarrowsEveryView asserts on the active pane rather than the
-// whole frame (ActivePaneForTest, export_test.go): the detail pane beside it
-// is handed the unfiltered snapshot on purpose, so it still names bv-1 as
-// bv-2's parent once the filter has removed it — deliberate, and not what
-// this test is about.
-func (s *appTestSuite) TestHideClosedNarrowsEveryView() {
+// TestHideClosedNarrowsTheListAndTree asserts on the active pane rather than
+// the whole frame (ActivePaneForTest, export_test.go): the detail pane beside
+// it is handed the unfiltered snapshot on purpose, so it still names bv-1 as
+// bv-2's parent once the filter has removed it — deliberate, and not what this
+// test is about.
+//
+// The board is deliberately absent from the loop: it is exempt from
+// hide-closed under its status lane, which the two tests below cover.
+func (s *appTestSuite) TestHideClosedNarrowsTheListAndTree() {
 	m := s.newModel(closedParentIssues())
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	for _, viewKey := range []rune{'1', '2', '3'} {
+	for _, viewKey := range []rune{'1', '2'} {
 		s.Run(string(viewKey), func() {
 			m.Update(tea.KeyPressMsg{Code: viewKey, Text: string(viewKey)})
 			s.Contains(ansi.Strip(tui.ActivePaneForTest(m)), "bv-1")
@@ -1159,14 +1167,63 @@ func (s *appTestSuite) TestHideClosedNarrowsEveryView() {
 	m.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 
-	for _, viewKey := range []rune{'1', '2', '3'} {
+	for _, viewKey := range []rune{'1', '2'} {
 		s.Run("hidden/"+string(viewKey), func() {
 			m.Update(tea.KeyPressMsg{Code: viewKey, Text: string(viewKey)})
 			out := ansi.Strip(tui.ActivePaneForTest(m))
-			s.NotContains(out, "bv-1", "the closed epic must be gone from every view")
+			s.NotContains(out, "bv-1", "the closed epic must be gone from both views")
 			s.Contains(out, "bv-2", "its open child must survive, re-rooted")
 		})
 	}
+}
+
+// TestHideClosedLeavesTheBoardsStatusLaneAlone pins the wiring half of the
+// board's exemption: applyFilter has to hand that one view a snapshot its
+// hide-closed pass skipped, or the board has nothing to put in its Closed
+// column no matter what it decides per lane.
+func (s *appTestSuite) TestHideClosedLeavesTheBoardsStatusLaneAlone() {
+	m := s.newModel(closedParentIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	out := ansi.Strip(tui.ActivePaneForTest(m))
+	s.Contains(out, "bv-1", "the Closed column is what shows closed work here")
+	s.Contains(out, "bv-2")
+}
+
+// TestHideClosedReachesTheBoardOnEveryOtherLane is the same wiring seen from
+// the other side: the preference must actually arrive at the view, not merely
+// be withheld from its snapshot, or cycling off the status lane would show
+// closed cards the user asked to hide.
+func (s *appTestSuite) TestHideClosedReachesTheBoardOnEveryOtherLane() {
+	m := s.newModel(closedParentIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	m.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // Status -> Priority.
+
+	out := ansi.Strip(tui.ActivePaneForTest(m))
+	s.NotContains(out, "bv-1")
+	s.Contains(out, "bv-2")
+}
+
+// TestTheHiddenCountIsSilentWhereNothingIsHidden keeps the status bar honest
+// about the pane beside it: "(1 hidden)" next to a Closed column holding the
+// very issue it claims to have hidden is a contradiction the reader has to
+// resolve, and the board's own count is the more reliable of the two.
+func (s *appTestSuite) TestTheHiddenCountIsSilentWhereNothingIsHidden() {
+	m := s.newModel(closedParentIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+
+	s.Contains(ansi.Strip(m.View()), "1 hidden", "the list does hide it")
+
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	s.NotContains(ansi.Strip(m.View()), "hidden", "the board's status lane does not")
+
+	m.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // Status -> Priority.
+	s.Contains(ansi.Strip(m.View()), "1 hidden", "and its other lanes do again")
 }
 
 func (s *appTestSuite) TestHideClosedTogglesBackOn() {
@@ -1617,10 +1674,15 @@ func (s *appTestSuite) TestEnterOnACardOpensItInTheList() {
 // Walking there with 'l' is no longer possible (bv-llf.2.1: MoveLeft/
 // MoveRight skip empty columns), so this reaches the same state the way
 // clamp still allows: a regrouping that empties the column the cursor
-// already sits on. Hiding closed issues does exactly that — bv-2 is the only
-// issue in the Closed column, so filtering it out leaves the cursor on a
-// column with nothing under it, which is what clamp resolves to rather than
-// picking a new one — see boardview's clamp.
+// already sits on. A text query does exactly that — bv-2 is the only issue in
+// the Closed column, so filtering it out leaves the cursor on a column with
+// nothing under it, which is what clamp resolves to rather than picking a new
+// one — see boardview's clamp.
+//
+// It used to be hide-closed that emptied the column here, which no longer
+// does: the board's status lane is exempt from that one criterion and keeps
+// its Closed column populated. Every other criterion still reaches the board,
+// which is what makes a query the replacement.
 func (s *appTestSuite) TestEnterOnAnEmptyColumnDoesNothing() {
 	m := s.newModel([]beads.Issue{
 		{ID: "bv-1", Title: "open", Status: beads.StatusOpen},
@@ -1632,7 +1694,7 @@ func (s *appTestSuite) TestEnterOnAnEmptyColumnDoesNothing() {
 	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"}) // skips the empty columns between Open and Closed
 	s.Require().Equal("bv-2", m.SelectedID(), "fixture assumption: cursor lands directly on Closed")
 
-	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"}) // hide closed: regroups with bv-2 filtered out
+	m.SetFilter(beads.Filter{Text: "open"}) // regroups with bv-2 filtered out
 	s.Require().Empty(m.SelectedID(), "fixture assumption: cursor is on an empty column")
 
 	before := m.View()

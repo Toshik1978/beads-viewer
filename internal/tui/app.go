@@ -399,13 +399,44 @@ func (m *Model) applyBackground(detected theme.DetectedBackground) {
 }
 
 // applyFilter is filtering's single call site: it narrows the current
-// snapshot once and hands the identical result to every view.
+// snapshot once and hands the result to every view.
+//
+// The board is the one exception, and it is a narrow one: it gets the same
+// narrowing with hide-closed left out of it, plus the preference itself, so
+// that it can honour or ignore that single criterion per swimlane (see
+// boardview.Model.laneSnapshot). Every other criterion still reaches it the
+// same way it reaches the rest — a text query narrows the board too.
 func (m *Model) applyFilter() {
 	filtered := m.filter.Apply(m.snapshot)
-	for _, v := range m.views {
+	for i, v := range m.views {
+		if i == boardSlot {
+			continue
+		}
 		v.SetSnapshot(filtered)
 	}
+	m.applyBoardFilter(filtered)
 	m.syncDetail()
+}
+
+// applyBoardFilter hands the board its own narrowing, falling back to the
+// shared one when the slot somehow does not hold a board — no view may be
+// left holding a stale snapshot, whatever the slot turns out to contain.
+func (m *Model) applyBoardFilter(filtered *beads.Snapshot) {
+	board, ok := m.views[boardSlot].(*boardview.Model)
+	if !ok {
+		m.views[boardSlot].SetSnapshot(filtered)
+
+		return
+	}
+
+	snap := filtered
+	if m.filter.HideClosed {
+		unhidden := m.filter
+		unhidden.HideClosed = false
+		snap = unhidden.Apply(m.snapshot)
+	}
+	board.SetHideClosed(m.filter.HideClosed)
+	board.SetSnapshot(snap)
 }
 
 // syncDetail keeps the detail pane showing the active view's current
@@ -436,7 +467,7 @@ func (m *Model) statusLine() string {
 	st.View = viewKindAt(m.active)
 	st.Lane = m.boardLaneName()
 	st.Hidden = 0
-	if m.filter.HideClosed {
+	if m.filter.HideClosed && !m.boardShowsClosed() {
 		// Minus tombstones: they are hidden with the toggle off too, so counting
 		// them reports issues hide-closed did not hide (1 closed + 2 tombstones
 		// read "3 hidden").
@@ -450,12 +481,32 @@ func (m *Model) statusLine() string {
 // bar's indicator (Tab cycled the grouping with nothing on screen saying
 // why before this), or "" when the board is not the active view.
 func (m *Model) boardLaneName() string {
-	board, ok := m.views[boardSlot].(*boardview.Model)
-	if !ok || m.active != boardSlot {
+	board, ok := m.activeBoard()
+	if !ok {
 		return ""
 	}
 
 	return board.Lane().Name()
+}
+
+// boardShowsClosed reports whether the pane on screen is the board under the
+// one lane hide-closed does not reach (boardview.Model.laneSnapshot). The
+// status bar asks so its hidden count does not contradict the frame it sits
+// under: "(1 hidden)" beside a Closed column holding that very issue is a
+// discrepancy a reader has to stop and resolve, and the column is right.
+func (m *Model) boardShowsClosed() bool {
+	board, ok := m.activeBoard()
+
+	return ok && board.Lane() == boardview.LaneStatus
+}
+
+// activeBoard returns the board view when it is the pane currently on screen.
+// Both status-bar decisions above need that same pairing — which lane to name,
+// and whether hide-closed applies to what the reader is actually looking at.
+func (m *Model) activeBoard() (*boardview.Model, bool) {
+	board, ok := m.views[boardSlot].(*boardview.Model)
+
+	return board, ok && m.active == boardSlot
 }
 
 // helpOverlay assembles the overlay Model actually shows: renderHelpBody's

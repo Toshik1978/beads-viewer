@@ -287,6 +287,75 @@ func (s *boardTestSuite) TestCycleSwimLanePreservesSelection() {
 	}
 }
 
+// TestStatusLaneKeepsClosedDespiteHideClosed pins the board's exemption from
+// hide-closed: the status lane has a Closed column, so it already shows closed
+// work as closed rather than mixed in with the rest, and hiding it there would
+// leave a labelled column permanently empty for no reason a reader can see.
+func (s *boardTestSuite) TestStatusLaneKeepsClosedDespiteHideClosed() {
+	m := s.model(s.sample(), 140, 30)
+	m.SetHideClosed(true)
+
+	s.True(m.SelectByID("d"), "the closed card is still on the board")
+	s.Contains(ansi.Strip(m.View()), "finished")
+}
+
+// TestOtherLanesHonourHideClosed is the other half of that exemption: only the
+// status lane earns it. Priority, assignee and type have no Closed column, so
+// exempting them would fold every closed issue in among the live work — which
+// in a real workspace is most of the cards on the board.
+func (s *boardTestSuite) TestOtherLanesHonourHideClosed() {
+	m := s.model(s.sample(), 140, 30)
+	m.SetHideClosed(true)
+
+	for _, lane := range []string{"priority", "assignee", "type"} {
+		m.CycleSwimLane()
+		s.Run(lane, func() {
+			s.False(m.SelectByID("d"), "the closed card is off the board")
+			s.NotContains(ansi.Strip(m.View()), "finished")
+		})
+	}
+}
+
+// TestCyclingBackToStatusRestoresClosed proves the board re-decides on every
+// regrouping rather than at SetSnapshot time — the lane changes without the
+// app being involved, so a decision taken once when the snapshot arrived would
+// strand the board on whatever lane happened to be active then.
+func (s *boardTestSuite) TestCyclingBackToStatusRestoresClosed() {
+	m := s.model(s.sample(), 140, 30)
+	m.SetHideClosed(true)
+
+	for range 4 {
+		m.CycleSwimLane()
+	}
+
+	s.True(m.SelectByID("d"))
+}
+
+// TestHideClosedOffLeavesEveryLaneAlone is the control: with the preference
+// off, no lane drops anything.
+func (s *boardTestSuite) TestHideClosedOffLeavesEveryLaneAlone() {
+	m := s.model(s.sample(), 140, 30)
+
+	for range 4 {
+		s.True(m.SelectByID("d"))
+		m.CycleSwimLane()
+	}
+}
+
+// TestHideClosedSurvivesAReload pins the ordering the app actually produces:
+// the preference is set once at startup and a watcher reload calls SetSnapshot
+// afterwards, so a SetSnapshot that rebuilt the board from the raw snapshot
+// would undo the exemption's other half on the first file change.
+func (s *boardTestSuite) TestHideClosedSurvivesAReload() {
+	m := s.model(s.sample(), 140, 30)
+	m.SetHideClosed(true)
+	m.CycleSwimLane() // Status -> Priority.
+
+	m.SetSnapshot(beads.NewSnapshot(s.sample()))
+
+	s.False(m.SelectByID("d"))
+}
+
 // TestNoLineExceedsTheWidth is strengthened with a lower bound (see this
 // task's brief): an upper-bound-only assertion is satisfied by an empty
 // render. Requiring the wide CJK fixture's own id to survive somewhere in

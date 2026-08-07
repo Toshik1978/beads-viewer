@@ -126,7 +126,16 @@ optimize for its own sake:
   view package cost substantially more than a line-count estimate
   anticipated — a lesson worth carrying forward rather than treating as
   settled: the next person estimating a view package's size should assume it
-  will run over by more than they think, not budget to the estimate. The
+  will run over by more than they think, not budget to the estimate; from
+  8,600 to 8,800 for the filtered-derivation fix, and this is the first raise
+  the cap's own advice above asked for out loud. The sixth left 8,555
+  standing against 8,600 — 45 lines, not the real slack it claimed — and the
+  very next change was an unbudgeted correctness fix, which is the first
+  raise's case exactly: 101 lines across `internal/beads` and the board,
+  including a `nav.go` the 500-line file cap required splitting out of
+  `boardview.go`. Compressing the reasoning in `derive.go` and
+  `boardview.go` to land back under 8,600 would have been the fourth raise's
+  failure committed on purpose, so the number moved instead. The
   structural limits below are the ones that actually detect the regression
   this cap is a proxy for, and they were satisfied with margin at each
   raise).
