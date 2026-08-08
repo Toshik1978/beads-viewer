@@ -51,10 +51,24 @@ jobs:
       # Pinned, not `latest`: a v3 would move CI onto a config schema
       # `.mise.toml` does not track. No separate format step — v2 runs the
       # formatters as part of `run`.
+      #
+      # skip-cache, at roughly 20s a job: a restored analysis cache made
+      # `nolintlint` fire on directives that are load-bearing. revive's
+      # findings came back from the cache instead of being recomputed, so no
+      # diagnostic was emitted at those lines and the `//nolint:revive` above
+      # them read as unused. It failed the v1.5.1 changelog commit on ubuntu
+      # while macOS, and a cold-cache local run of the same golangci-lint,
+      # passed on identical code; a plain re-run went green. The failing job
+      # took 28s against the usual 51s, which is the cache doing less work
+      # rather than the tree being cleaner. A lint whose verdict depends on
+      # what a previous run left behind is worth more than the seconds it
+      # saves, and it fails in the direction that wastes the most time: a red
+      # build nobody can reproduce.
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           args: --timeout=5m
+          skip-cache: true
 
       - name: test
         run: go test ./...

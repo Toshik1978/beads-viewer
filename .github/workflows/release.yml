@@ -37,10 +37,18 @@ jobs:
           cache: true
 
       # install-only: `task check` runs the lint itself a step later.
+      #
+      # skip-cache for the reason ci.yml gives at length, and it matters more
+      # here: this gate runs *after* the tag is public, so a cache-induced
+      # failure is one that has to be walked back rather than re-run. The
+      # action documents install-only as a way to pre-populate a cache for
+      # later jobs, so leaving caching on would put the same restored
+      # analysis under the `task check` two steps below.
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           install-only: true
+          skip-cache: true
 
       - uses: go-task/setup-task@v2
         with:
