@@ -8,7 +8,7 @@ name: Docs
 # job, so this cannot live inside ci.yml.
 #
 # This list is the complement of ci.yml's `paths-ignore`; a test in
-# internal/licensing enforces that. It cannot be a grep step: the forbidden
+# internal/repocheck enforces that. It cannot be a grep step: the forbidden
 # strings live in the sweep's own test, and spelling them out here would make
 # this file fail it.
 on:
@@ -36,6 +36,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The id and display name still say "licensing" although the package moved
+  # to internal/repocheck and now runs four suites. Deliberate: a job name is
+  # what branch protection matches a required status check on, and renaming
+  # one silently stops satisfying a rule configured in repository settings
+  # that nothing in this tree can see. Change it and update the protection
+  # rule in the same sitting, or leave it.
   licensing:
     name: Licensing guard
     runs-on: ubuntu-latest
@@ -52,4 +58,4 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - run: go test ./internal/licensing/
+      - run: go test ./internal/repocheck/

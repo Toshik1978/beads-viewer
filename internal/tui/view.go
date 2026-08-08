@@ -43,7 +43,7 @@ type View interface {
 // It lives beside the View interface rather than on the root model, along
 // with the two slot constants below: all of it is view-slot bookkeeping, and
 // app.go is the file this project's 500-line cap actually binds on — a cap
-// that is now measured by sizes_test.go (internal/licensing) rather than left
+// that is now measured by sizes_test.go (internal/repocheck) rather than left
 // to whoever thinks to count.
 func viewKinds() [viewCount]config.ViewKind {
 	return [viewCount]config.ViewKind{config.ViewList, config.ViewTree, config.ViewBoard, config.ViewDeps}

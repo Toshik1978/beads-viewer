@@ -2,7 +2,7 @@ name: CI
 
 # The only markdown that cannot affect a job. Not '**.md': the licensing sweep
 # reads every tracked file and release-config reads CHANGELOG.md. Complement of
-# docs.yml's `paths` — a test in internal/licensing enforces that.
+# docs.yml's `paths` — a test in internal/repocheck enforces that.
 on:
   push:
     branches: [main]
@@ -234,7 +234,7 @@ jobs:
 
       # Both conditions evaluated before exit, so one run reports everything.
       # MIN_COVERAGE is duplicated in Taskfile.yml's coverage task. The two
-      # are held equal by TestCoverageFloorsAgree (internal/licensing), which
+      # are held equal by TestCoverageFloorsAgree (internal/repocheck), which
       # reads this file, so changing one alone fails the suite.
       - name: Check test and coverage gates
         shell: bash

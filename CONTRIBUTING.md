@@ -66,7 +66,7 @@ That is `format:check`, `lint` and `test`. It takes seconds, not minutes.
 
 ### Stage first, then run the gate
 
-`internal/licensing` sweeps **git-tracked** files. A file that is written but
+`internal/repocheck` sweeps **git-tracked** files. A file that is written but
 not yet `git add`ed is invisible to it, so the gate passes, the commit lands,
 and the very next run goes red on the file just committed. Stage, then gate,
 then commit. This is also why the full gate is a *pre-push* hook rather than a
@@ -96,7 +96,7 @@ if you forget. Do not skip hooks and do not reach for `--no-verify`.
   of this codebase's review history is that mistake in various disguises.
 - **Do not name a filesystem path from your own machine in a tracked file,**
   and name other projects only in `README.md`'s Acknowledgements.
-  `internal/licensing` enforces both and will fail the build.
+  `internal/repocheck` enforces both and will fail the build.
 - **New dependencies** need a reason: what it solves, and why the standard
   library or an existing dependency is insufficient. There are nine direct
   dependencies and that number is a deliberate ceiling, not a coincidence.

@@ -15,7 +15,7 @@ formatters as part of `run`, verified against `gofumpt`, `gci` and `golines`
 violations, each of which fails `run` on its own. It stays first in `check`
 because it is far faster and prints a diff instead of a one-line complaint.
 
-**Run it again after `git add`, not only before.** The `internal/licensing`
+**Run it again after `git add`, not only before.** The `internal/repocheck`
 sweep (see Licensing below) enumerates *git-tracked* files. A new file that is
 not yet staged is invisible to it: the gate goes green, the commit lands, and
 the very next run goes red on the file just committed. Stage first, then run
@@ -95,7 +95,7 @@ below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
 **The three line caps are enforced by `sizes_test.go`
-(`internal/licensing`), and the numbers live there, not here.** They were
+(`internal/repocheck`), and the numbers live there, not here.** They were
 prose alone until `bv-dyt`, and prose is checked only when someone happens to
 count: `internal/tui/app.go` sat 26 lines over the per-file cap through six
 releases and was found while budgeting an unrelated epic. Raising a cap means
@@ -237,7 +237,7 @@ inside that directory and never spawns a subprocess. Both are asserted by
 tests in `cmd/bv/main_test.go` (`TestNeverWritesInsideBeads`,
 `TestNoSubprocessInTheBinary`). The latter is a source check, not a runtime
 one: it runs `go list -deps ./...` and fails if any package under this module
-other than `internal/licensing` (test-support code that shells out to `git`
+other than `internal/repocheck` (test-support code that shells out to `git`
 and never reaches a `bv` run) imports `os/exec`. Any change that would make
 either test fail is out of scope for this project, not a bug to work around.
 
@@ -272,13 +272,13 @@ here.
   by `br`'s wire format. Do not reintroduce either; a test asserts their
   absence, not merely MIT's presence.
 - Never name an upstream project in a git-tracked file other than `README.md`
-  (its Acknowledgements section) and `internal/licensing`'s own test, which
-  enumerates the disallowed strings and is exempted from itself by name.
+  (its Acknowledgements section) and `internal/repocheck`'s licensing test,
+  which enumerates the disallowed strings and is exempted from itself by name.
 - Never name a filesystem path on someone else's machine in **any** git-tracked
   file, `README.md` included. That sweep is stricter than the name sweep on
   purpose: naming a project is a courtesy, naming a directory on a laptop is a
   leak.
-- Run `go test ./internal/licensing/` after staging any new tracked file, not
+- Run `go test ./internal/repocheck/` after staging any new tracked file, not
   only after editing an existing one; the sweep only sees what git tracks, so
   a file that is written but not yet `git add`ed will pass today and fail on
   the very next run.

@@ -1,7 +1,20 @@
-// Package licensing exposes the repository facts its own test suite needs to
-// enforce the licensing invariants: where the repository root is, and which
-// files git tracks.
-package licensing
+// Package repocheck exposes the repository facts its own test suites need to
+// enforce this project's repository-wide invariants: where the repository
+// root is, and which files git tracks.
+//
+// The suites are what do the enforcing, and there are four — the licensing
+// sweep, the CI workflow rules, the coverage floor and the size caps. Only
+// the first is about licensing, which is what this package was called until
+// bv-67u. The name was not merely stale: a line-count check is not something
+// anyone thinks to look for in a package called `licensing`, and
+// internal/tui/app.go sat over the per-file cap for six releases partly
+// because of it.
+//
+// Nothing here is imported by a package that ships. It exists so the suites
+// can ask git what the repository contains, which is why this is the one
+// package cmd/bv's TestNoSubprocessInTheBinary exempts from the os/exec ban —
+// that exemption matches on this import path, so it moved with the rename.
+package repocheck
 
 import (
 	"context"

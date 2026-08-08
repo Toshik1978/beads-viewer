@@ -1,4 +1,4 @@
-package licensing_test
+package repocheck_test
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/Toshik1978/beads-viewer/internal/licensing"
+	"github.com/Toshik1978/beads-viewer/internal/repocheck"
 )
 
 // workflowsTestSuite enforces the one CI invariant that is otherwise only a
@@ -25,7 +25,7 @@ type workflowsTestSuite struct {
 }
 
 func (s *workflowsTestSuite) SetupSuite() {
-	root, err := licensing.RepoRoot(s.T().Context())
+	root, err := repocheck.RepoRoot(s.T().Context())
 	s.Require().NoError(err)
 	s.root = root
 }

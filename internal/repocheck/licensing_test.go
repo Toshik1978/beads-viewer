@@ -1,22 +1,15 @@
-package licensing_test
+package repocheck_test
 
 import (
 	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
-	"testing"
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/Toshik1978/beads-viewer/internal/licensing"
+	"github.com/Toshik1978/beads-viewer/internal/repocheck"
 )
-
-func TestLicensing(t *testing.T) {
-	suite.Run(t, new(licensingTestSuite))
-	suite.Run(t, new(workflowsTestSuite))
-	suite.Run(t, new(sizesTestSuite))
-}
 
 // The pattern lists are suite fields rather than package-level vars: the
 // `gochecknoglobals` linter is NOT relaxed in `_test.go` (only dupl, errcheck,
@@ -46,11 +39,11 @@ type licensingTestSuite struct {
 }
 
 func (s *licensingTestSuite) SetupSuite() {
-	root, err := licensing.RepoRoot(s.T().Context())
+	root, err := repocheck.RepoRoot(s.T().Context())
 	s.Require().NoError(err)
 	s.root = root
 
-	files, err := licensing.TrackedFiles(s.T().Context(), root)
+	files, err := repocheck.TrackedFiles(s.T().Context(), root)
 	s.Require().NoError(err)
 	// Guard every sweep at once. A sweep over zero files passes forever while
 	// protecting nothing, and that is the failure mode this package exists to
@@ -73,7 +66,7 @@ func (s *licensingTestSuite) SetupSuite() {
 		"_beads",
 	}
 
-	const self = "internal/licensing/licensing_test.go"
+	const self = "internal/repocheck/licensing_test.go"
 
 	s.namesExempt = map[string]bool{
 		"README.md": true,

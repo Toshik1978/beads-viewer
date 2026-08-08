@@ -1,4 +1,4 @@
-package licensing_test
+package repocheck_test
 
 // This file enforces the size tripwires CLAUDE.md argues for. They were prose
 // alone until now, and prose is checked only when someone happens to count:
@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/Toshik1978/beads-viewer/internal/licensing"
+	"github.com/Toshik1978/beads-viewer/internal/repocheck"
 )
 
 // The caps, in lines. maxFileLines is the general one; maxMainLines is the
@@ -39,7 +39,7 @@ const mainPath = "cmd/bv/main.go"
 
 // sizesTestSuite measures every git-tracked non-test Go file once, in
 // SetupSuite, and lets each test read the same measurements. Tracked files
-// rather than a filesystem walk, for the reason licensing.TrackedFiles gives
+// rather than a filesystem walk, for the reason repocheck.TrackedFiles gives
 // itself: a walk would sweep untracked scratch directories and descend into
 // build output, and neither is code this project is accountable for.
 type sizesTestSuite struct {
@@ -50,10 +50,10 @@ type sizesTestSuite struct {
 }
 
 func (s *sizesTestSuite) SetupSuite() {
-	root, err := licensing.RepoRoot(s.T().Context())
+	root, err := repocheck.RepoRoot(s.T().Context())
 	s.Require().NoError(err)
 
-	tracked, err := licensing.TrackedFiles(s.T().Context(), root)
+	tracked, err := repocheck.TrackedFiles(s.T().Context(), root)
 	s.Require().NoError(err)
 
 	s.lines = map[string]int{}

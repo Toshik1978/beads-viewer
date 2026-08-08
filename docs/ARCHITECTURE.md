@@ -18,14 +18,14 @@ internal/tui        the bubbletea application: root model, key map, layout
   ├── detail                          the detail pane (markdown rendering)
   ├── theme                           colour scheme resolution and styles
   └── uitext                         display-width-aware text helpers
-internal/licensing  repository-fact helpers for the licensing gate (its own test only)
+internal/repocheck  repository-fact helpers for the repo-wide gates (its own tests only)
 cmd/bv              the composition root
 ```
 
-`internal/licensing` sits outside the runtime import graph the rest of this
+`internal/repocheck` sits outside the runtime import graph the rest of this
 diagram describes — nothing in `cmd/bv` or `internal/tui` imports it, and it
-imports none of them back. It exists for one consumer: its own test, which
-enumerates git-tracked files and enforces the licensing invariants in
+imports none of them back. It exists for one consumer: its own tests, which
+enumerate git-tracked files and enforce the repository-wide invariants in
 [`CLAUDE.md`](../CLAUDE.md). It is listed here anyway because it is a real
 package with a build-breaking constraint of its own — `task check` fails if
 its sweep fires — and a layering diagram that omitted it would understate
@@ -171,7 +171,7 @@ entirely.
 <!--
   Deliberately no file:line citation into br's own source here. The natural
   form of that citation names the relative path of a sibling checkout on this
-  machine, and internal/licensing's sweep disallows that exact string in
+  machine, and internal/repocheck's licensing sweep disallows that exact string in
   every tracked file without exception — README.md included — so adding it
   back would turn the licensing gate red. Point a reader at the SQL by
   describing the behaviour instead, as

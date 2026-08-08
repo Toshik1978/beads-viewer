@@ -28,8 +28,9 @@ repos:
           - pre-commit
 
       # Pre-push, not earlier, for a reason specific to this repository: the
-      # licensing sweep inside `task check` enumerates GIT-TRACKED files, so
-      # pre-push is the first stage where its verdict matches a reviewer's.
+      # licensing sweep (internal/repocheck) inside `task check` enumerates
+      # GIT-TRACKED files, so pre-push is the first stage where its verdict
+      # matches a reviewer's.
       #
       # Not filtered by file type: the sweep reads prose too, and `types: [go]`
       # would skip the commits likeliest to introduce a bad reference.

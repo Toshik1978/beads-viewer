@@ -199,9 +199,9 @@ func (s *mainTestSuite) TestNoSubprocessInTheBinary() {
 		if !strings.HasPrefix(line, "github.com/Toshik1978/beads-viewer/") {
 			continue
 		}
-		// internal/licensing shells out to git, but it is test-support code
+		// internal/repocheck shells out to git, but it is test-support code
 		// that never reaches a bv run.
-		if strings.Contains(line, "/internal/licensing") {
+		if strings.Contains(line, "/internal/repocheck") {
 			continue
 		}
 		s.NotContains(line, "os/exec",

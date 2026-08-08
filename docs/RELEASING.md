@@ -56,8 +56,8 @@ git commit -m "docs(changelog): add vX.Y.Z"
 ```
 
 Run `task check` after staging, per this repository's usual rule — the
-licensing sweep only sees tracked files, so a change staged after the gate
-already ran is invisible to it.
+licensing sweep (`internal/repocheck`) only sees tracked files, so a change
+staged after the gate already ran is invisible to it.
 
 ## Step 5 — verify, tag and push
 
