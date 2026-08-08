@@ -20,4 +20,5 @@ func TestRepocheck(t *testing.T) {
 	suite.Run(t, new(licensingTestSuite))
 	suite.Run(t, new(workflowsTestSuite))
 	suite.Run(t, new(sizesTestSuite))
+	suite.Run(t, new(fieldsTestSuite))
 }

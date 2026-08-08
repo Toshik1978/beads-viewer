@@ -94,14 +94,15 @@ bookkeeping until nothing about it was reviewable in isolation. Every limit
 below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
-**The three line caps are enforced by `sizes_test.go`
-(`internal/repocheck`), and the numbers live there, not here.** They were
-prose alone until `bv-dyt`, and prose is checked only when someone happens to
-count: `internal/tui/app.go` sat 26 lines over the per-file cap through six
-releases and was found while budgeting an unrelated epic. Raising a cap means
-editing that file, which is the point — the raise shows up in a diff instead
-of in nobody's memory. What stays here is the reasoning below, which is the
-half worth reading before raising one and the half no test can hold.
+**The three line caps and the field cap are enforced by `sizes_test.go` and
+`fields_test.go` (`internal/repocheck`), and the numbers live there, not
+here.** They were prose alone until `bv-dyt` and `bv-vpv`, and prose is
+checked only when someone happens to count: `internal/tui/app.go` sat 26
+lines over the per-file cap through six releases and was found while
+budgeting an unrelated epic. Raising a cap means editing one of those files,
+which is the point — the raise shows up in a diff instead of in nobody's
+memory. What stays here is the reasoning below, which is the half worth
+reading before raising one and the half no test can hold.
 
 - Non-test Go: at most **9,000 lines** total (raised seven times: from 6,000
   to 6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
@@ -166,9 +167,14 @@ half worth reading before raising one and the half no test can hold.
   instead by one file per suite — a test file that maps to exactly one
   `suite.Suite` has not accumulated unrelated responsibilities however long
   it grows, so the line cap does not apply to it.
-- No behavioural type has more than **20 fields**. `beads.Issue` is exempt:
-  it is the JSONL decode target, and its field count mirrors `br`'s own wire
-  format rather than anything this project chose — currently 26.
+- No struct has more than **20 fields**. `beads.Issue` is exempt: it is the
+  JSONL decode target, and its field count mirrors `br`'s own wire format
+  rather than anything this project chose — currently 26. This said
+  "behavioural type" until `bv-vpv` gave it a test, and the word did not
+  survive being made precise: the obvious reading, "declares at least one
+  method", excuses `tui.KeyMap` (17 fields, no methods, the closest thing in
+  the tree to the cap) while flagging `Issue`, which declares `IsTombstone`.
+  Every struct is checked now, with one exemption by name.
 - At most **5 exported type declarations per file** (`revive`'s
   `max-public-structs`, enforced with `enable-all-rules: true`). This counts
   every exported type declaration, not only structs. When a file would
