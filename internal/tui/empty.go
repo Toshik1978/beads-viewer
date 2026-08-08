@@ -107,7 +107,7 @@ func emptyMessage(reason emptyReason, f beads.Filter, errText string) string {
 
 	// Every named emptyReason is handled above (the exhaustive linter checks
 	// it); this only guards a value outside that closed set, mirroring
-	// activeIndex's own fallback in app.go.
+	// activeIndex's own fallback in view.go.
 	return createHint
 }
 

@@ -141,7 +141,7 @@ func gutter(height int) string {
 // paneHeights splits l's BodyHeight between the list and detail panes: equal
 // shares when stacked, or the full height for both when side by side. When
 // Bordered, each pane's own frame is then deducted from its share.
-// Model.applyLayout and applyBackground (app.go, rebuilding the detail pane
+// Model.applyLayout and applyBackground (apply.go, rebuilding the detail pane
 // after a scheme change) both need this.
 func (l Layout) paneHeights() (list, detail int) {
 	list, detail = l.BodyHeight, l.BodyHeight

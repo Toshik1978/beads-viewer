@@ -94,6 +94,15 @@ bookkeeping until nothing about it was reviewable in isolation. Every limit
 below is a proxy for catching that regression again, not a target to
 optimize for its own sake:
 
+**The three line caps are enforced by `sizes_test.go`
+(`internal/licensing`), and the numbers live there, not here.** They were
+prose alone until `bv-dyt`, and prose is checked only when someone happens to
+count: `internal/tui/app.go` sat 26 lines over the per-file cap through six
+releases and was found while budgeting an unrelated epic. Raising a cap means
+editing that file, which is the point — the raise shows up in a diff instead
+of in nobody's memory. What stays here is the reasoning below, which is the
+half worth reading before raising one and the half no test can hold.
+
 - Non-test Go: at most **9,000 lines** total (raised seven times: from 6,000
   to 6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
   six interface features under the border/focus/board epic; from 6,800 to

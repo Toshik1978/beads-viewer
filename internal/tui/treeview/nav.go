@@ -320,7 +320,7 @@ func (m *Model) refreshRows() {
 // the identity — Retain's own doc records that it still drops tombstone-only
 // subtrees — so removing it would put deletion markers on screen for a caller
 // driving this package directly, as its own tests do; not inside the composed
-// app, where applyFilter (tui/app.go) has dropped them already. Every other
+// app, where applyFilter (tui/apply.go) has dropped them already. Every other
 // narrowing is the app's, applied upstream and delivered as a narrower snapshot.
 //
 // A fresh Build resets every node back to its depth==0 default, correct
@@ -416,7 +416,7 @@ func HelpKeys() []string {
 // dozen bound-method values sitting idle for the life of the view merely to
 // save one small map literal per human keystroke.
 //
-// "pgup"/"pgdown" are deliberately absent: app.go's handleKey routes those
+// "pgup"/"pgdown" are deliberately absent: tui/keys.go's handleKey routes those
 // two spellings to the detail pane whenever it is on screen — the normal case
 // — so a tree-side binding on them was dead code, confirmed live (two
 // PageDown presses left the tree's cursor untouched while the detail pane

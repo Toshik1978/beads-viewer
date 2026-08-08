@@ -17,7 +17,7 @@ import (
 //
 // SetTheme is what lets a detected background reach the panes: each New
 // captures a theme.Theme BY VALUE, so without this applyBackground's rebuild
-// (app.go) never reached a view already on screen.
+// (apply.go) never reached a view already on screen.
 //
 // Reveal is what makes a view switch land on the issue the user was already
 // looking at. It is deliberately not named SelectByID, which listview and
@@ -40,9 +40,11 @@ type View interface {
 // instead of each maintaining its own switch, which is what kept the two from
 // drifting out of sync when board's slot last moved.
 //
-// It lives beside the View interface rather than on the root model: it is
-// view-slot bookkeeping, and app.go is the file this project's 500-line cap
-// actually binds on.
+// It lives beside the View interface rather than on the root model, along
+// with the two slot constants below: all of it is view-slot bookkeeping, and
+// app.go is the file this project's 500-line cap actually binds on — a cap
+// that is now measured by sizes_test.go (internal/licensing) rather than left
+// to whoever thinks to count.
 func viewKinds() [viewCount]config.ViewKind {
 	return [viewCount]config.ViewKind{config.ViewList, config.ViewTree, config.ViewBoard, config.ViewDeps}
 }
@@ -68,3 +70,10 @@ func viewKindAt(i int) config.ViewKind {
 
 	return config.ViewList
 }
+
+// boardSlot and depsSlot are the two views that render full screen — see
+// showsDetail (layout.go).
+const (
+	boardSlot = 2
+	depsSlot  = 3
+)

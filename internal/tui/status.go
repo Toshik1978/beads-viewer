@@ -11,6 +11,7 @@ import (
 
 	"github.com/Toshik1978/beads-viewer/internal/beads"
 	"github.com/Toshik1978/beads-viewer/internal/config"
+	"github.com/Toshik1978/beads-viewer/internal/tui/boardview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 	"github.com/Toshik1978/beads-viewer/internal/tui/uitext"
 )
@@ -23,7 +24,7 @@ const statusHint = "? help"
 const statusSeparator = " │ "
 
 // statusState is the status bar's content for one frame. Model composes a
-// fresh value every render (statusLine, app.go) from live counts/filter/view
+// fresh value every render (statusLine, below) from live counts/filter/view
 // plus Message/IsError/token, the part that persists across frames — set by
 // Model.setStatus on a reload (success or failure) and on yank.
 type statusState struct {
@@ -142,4 +143,58 @@ func renderLine(th theme.Theme, prefix, full string, styleMessage bool, width in
 	pad := strings.Repeat(" ", max(width-lipgloss.Width(truncated), 0))
 
 	return th.StatusBar.Render(truncated[:boundary]) + th.Error.Render(truncated[boundary:]) + th.StatusBar.Render(pad)
+}
+
+// statusLine renders the status bar for the current frame. m.status only
+// ever carries Message, IsError and token persistently (set by setStatus);
+// the rest of statusState is recomputed here from live state on every
+// render, which is what lets renderStatus read beads.Counts and the filter
+// directly instead of this method keeping a parallel copy of them.
+func (m *Model) statusLine() string {
+	st := m.status
+	st.Counts = m.snapshot.Counts()
+	st.Filter = m.filter
+	st.View = viewKindAt(m.active)
+	st.Lane = m.boardLaneName()
+	st.Hidden = 0
+	if m.filter.HideClosed && !m.boardShowsClosed() {
+		// Minus tombstones: they are hidden with the toggle off too, so counting
+		// them reports issues hide-closed did not hide (1 closed + 2 tombstones
+		// read "3 hidden").
+		st.Hidden = st.Counts.Closed - st.Counts.Tombstones
+	}
+
+	return renderStatus(st, m.theme, m.layout.Width)
+}
+
+// boardLaneName returns the active board's swimlane name for the status
+// bar's indicator (Tab cycled the grouping with nothing on screen saying
+// why before this), or "" when the board is not the active view.
+func (m *Model) boardLaneName() string {
+	board, ok := m.activeBoard()
+	if !ok {
+		return ""
+	}
+
+	return board.Lane().Name()
+}
+
+// boardShowsClosed reports whether the pane on screen is the board under the
+// one lane hide-closed does not reach (boardview.Model.laneSnapshot). The
+// status bar asks so its hidden count does not contradict the frame it sits
+// under: "(1 hidden)" beside a Closed column holding that very issue is a
+// discrepancy a reader has to stop and resolve, and the column is right.
+func (m *Model) boardShowsClosed() bool {
+	board, ok := m.activeBoard()
+
+	return ok && board.Lane() == boardview.LaneStatus
+}
+
+// activeBoard returns the board view when it is the pane currently on screen.
+// Both status-bar decisions above need that same pairing — which lane to name,
+// and whether hide-closed applies to what the reader is actually looking at.
+func (m *Model) activeBoard() (*boardview.Model, bool) {
+	board, ok := m.views[boardSlot].(*boardview.Model)
+
+	return board, ok && m.active == boardSlot
 }

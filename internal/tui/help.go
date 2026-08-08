@@ -33,7 +33,7 @@ type helpGroup struct {
 // renderHelp lays out every bound key, grouped by area, in two columns
 // balanced by height, centred over width x height. It is a pure function of
 // its four arguments — an exported test seam — so it cannot know whether a
-// tea.BackgroundColorMsg ever arrived; helpOverlay (app.go) calls
+// tea.BackgroundColorMsg ever arrived; helpOverlay (below) calls
 // renderHelpBody directly with that note instead, so the note is centred
 // together with the rest rather than appended after this returns.
 func renderHelp(keys KeyMap, th theme.Theme, width, height int) string {
@@ -158,4 +158,29 @@ func renderGroup(th theme.Theme, g helpGroup, width int) []string {
 	}
 
 	return lines
+}
+
+// backgroundUnknownNote is the help footer for when no tea.BackgroundColorMsg
+// ever arrived (normal over SSH/tmux). It must not claim bv assumed dark:
+// theme.Resolve maps auto + BackgroundUnknown to SchemeAgnostic, not
+// SchemeDark (theme.go) — guessing dark is what rendered near-white text on
+// light terminals over SSH pre-rewrite — and both BV_THEME=light and =dark
+// are named, since the agnostic palette assumes neither background.
+const backgroundUnknownNote = "Terminal background not detected (normal over SSH/tmux) — using a " +
+	"background-agnostic palette.\nSet BV_THEME=light or BV_THEME=dark for a tuned one."
+
+// helpOverlay assembles the overlay Model actually shows: renderHelpBody's
+// grouped bindings, plus — only when the background was never detected —
+// the note that makes BV_THEME discoverable, passed in so it is centred
+// together with the rest rather than appended after.
+//
+// backgroundUnknownNote's first line alone is 94 cells: unwrapped, it
+// overflowed every terminal narrower than that, including 80x24 (C2).
+func (m *Model) helpOverlay() string {
+	note := ""
+	if m.overlay.background == theme.BackgroundUnknown {
+		note = m.theme.Muted.Render(lipgloss.Wrap(backgroundUnknownNote, m.layout.Width, ""))
+	}
+
+	return renderHelpBody(m.keys, m.theme, m.layout.Width, m.layout.BodyHeight, note)
 }
