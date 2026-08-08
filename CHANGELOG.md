@@ -9,6 +9,79 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.5.1 — 2026-08-08
+
+Three ways `bv` could leave you without an explanation, each at the moment you
+most needed one. Piped or redirected input hung the program outright — no
+frame, no message, no exit. A `.beads` directory that exists but cannot be
+read was reported as one that does not exist, which sends you to check your
+spelling rather than your permissions. And an epic held up by a child the
+active filter had hidden was marked blocked with nothing on screen naming the
+cause.
+
+**Nothing about the interface changes.** No key was added, removed or
+reassigned, and no issue's blocked or ready state moves. The one rendering
+change is the dependency view's "blocked by" column, which now fills a case
+where it used to be empty.
+
+### `bv` refuses to start rather than hanging
+
+- `echo | bv`, `bv < /dev/null`, or a run from any job that inherits a
+  terminal it does not own used to block forever. bubbletea does not report
+  that its input is unusable: it falls back to opening `/dev/tty`, finds the
+  terminal of whatever shell started `bv`, and waits there. The workspace was
+  already loaded by then, so from the outside the process looked idle rather
+  than stuck.
+- It now exits 1 with `stdin is not a terminal` on stderr. `--version` and
+  `--help` are unaffected and still pipe normally.
+- If you script around `bv`, a redirected run is now a fast failure carrying a
+  reason, instead of a process that has to be killed.
+
+### Failures name what actually went wrong
+
+- A workspace path that exists but cannot be read — the wrong mode bits on it
+  or on a parent directory — reported "no .beads directory found", the same
+  words as a path that genuinely is not there. Only a genuinely absent path
+  says that now; anything else is reported with the underlying error and the
+  path it happened to.
+- The upward search names the directory it started from. "At or above the
+  working directory" is unanswerable when the reader's shell is not where they
+  think it is, which is the usual reason for seeing the message at all.
+
+### The dependency view names the child a filter hid
+
+- v1.5.0 moved blockedness onto the whole workspace rather than the filtered
+  view. The "blocked by" column had not caught up: it still read an epic's
+  children from the filtered snapshot, so a text, label or status query that
+  hid the epic's only open child left the epic correctly marked blocked beside
+  an empty column.
+- Nothing rendered falsely — the column showed less than it could, not
+  something untrue — and the same filter emptied it before v1.5.0 too, for the
+  opposite reason. It now names the child whether or not the filter is showing
+  it.
+
+The fourth fix below has no visible effect today. The file watcher left its
+event channel open when closed, which strands a consumer goroutine the first
+time a watcher is restarted; `bv` starts exactly one and exits immediately
+after closing it, so nothing leaked in practice. It is fixed so that a future
+workspace switch does not have to discover it.
+
+### Bug Fixes
+
+- fix(beads): report an unreadable workspace path as what it is ([fb6e775](https://github.com/Toshik1978/beads-viewer/commit/fb6e775f736ae035b89dccc8c79ef8a5bc18d0d3))
+- fix(watch): release the events channel when the watcher closes ([968866e](https://github.com/Toshik1978/beads-viewer/commit/968866eb24638519c56c516b1939e2a4370b4571))
+- fix(cmd): report a redirected stdin instead of hanging on it ([f13aafa](https://github.com/Toshik1978/beads-viewer/commit/f13aafa4cfb8c761472b26636aceae3eaa8f000c))
+- fix(deps): name the open child a filter hid ([6b2be36](https://github.com/Toshik1978/beads-viewer/commit/6b2be369c4d4480ee663e1244afa59139c3689e2))
+
+### Others
+
+- docs(releasing): record Step 1 as done rather than upcoming ([5dbaf64](https://github.com/Toshik1978/beads-viewer/commit/5dbaf64567236819f0bb81abe99adff3b3694ee0))
+- docs(architecture): put the reload figures beside the reload reasoning ([510cc72](https://github.com/Toshik1978/beads-viewer/commit/510cc72fcc5bc7e0f9ddc4f50101c05065a5dcaf))
+- refactor(beads): derive blockedness once per issue in Counts ([fd6d5be](https://github.com/Toshik1978/beads-viewer/commit/fd6d5be9b4a0b6e34f3ce6652da18aca03bdb5ae))
+- refactor(repocheck): rename internal/licensing to what it actually is ([115d067](https://github.com/Toshik1978/beads-viewer/commit/115d06754a8257ec073abefb133cc0b31b060614))
+
+---
+
 ## v1.5.0 — 2026-08-07
 
 Hiding closed issues — on by default since v1.3.0 — quietly changed the answer
