@@ -74,6 +74,10 @@ decodes cleanly and the key is simply ignored. Schema v19 rewrites SQLite
 columns, and `bv` reads the JSONL rather than `beads.db`. `br`'s status,
 issue-type and dependency-type sets are unchanged, and so are `bv`'s.
 
+### Bug Fixes
+
+- fix(theme): stop the open-enum switches depending on a flaky lint ([9bed83a](https://github.com/Toshik1978/beads-viewer/commit/9bed83a))
+
 ### Others
 
 - ci: stop the lint cache deciding what the lint reports ([78f676d](https://github.com/Toshik1978/beads-viewer/commit/78f676d0c59f810d363a7e5e471f65a8d5d5f09d))

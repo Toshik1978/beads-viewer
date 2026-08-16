@@ -170,11 +170,22 @@ func (t Theme) TypeGlyph(k beads.IssueType) string {
 // SchemeAgnostic builds Muted and Base from attributes rather than colours
 // precisely because it must assume nothing about the background.
 //
-// The default arm is the open-enum path, not a defensive one — br models
+// The trailing return is the open-enum path, not a defensive one — br models
 // issue_type as an open set and bv renders rather than validates, so an
 // unrecognised type is data, not an error.
+//
+// It is a trailing return rather than a `default:` arm because `exhaustive`
+// and `revive` want opposite things here. `exhaustive` requires every known
+// type to be named, and TypeTask's style is the same neutral one an unknown
+// type gets — so naming it beside a `default:` returning the same style put
+// two identical branches in one switch, which `revive`'s
+// identical-switch-branches then flagged. Silencing that with `//nolint`
+// worked until it didn't: whether the directive counted as *used* depended on
+// revive firing, which is not reliable run to run, and `nolintlint` failed the
+// build at random on ubuntu once and macOS once, on unchanged code. Dropping
+// the `default:` satisfies both linters outright and leaves nothing for
+// nolintlint to judge. Do not reintroduce the arm.
 func (t Theme) Type(k beads.IssueType) lipgloss.Style {
-	//nolint:revive // TypeTask mirrors default on purpose: naming it keeps a future type visibly unhandled.
 	switch k {
 	case beads.TypeBug:
 		return t.Error
@@ -186,15 +197,15 @@ func (t Theme) Type(k beads.IssueType) lipgloss.Style {
 		return t.Muted
 	case beads.TypeTask:
 		return t.Base
-	default:
-		return t.Base
 	}
+
+	return t.Base
 }
 
 // Status returns the style a status label is rendered in. See Type for why
-// these reuse existing styles and why the default arm carries real traffic.
+// these reuse existing styles, and why the open-enum path is a trailing
+// return rather than a `default:` arm.
 func (t Theme) Status(s beads.Status) lipgloss.Style {
-	//nolint:revive // StatusOpen mirrors default on purpose: naming it keeps a future status visibly unhandled.
 	switch s {
 	case beads.StatusInProgress:
 		return t.Accent
@@ -206,9 +217,9 @@ func (t Theme) Status(s beads.Status) lipgloss.Style {
 		return t.Muted
 	case beads.StatusOpen:
 		return t.Base
-	default:
-		return t.Base
 	}
+
+	return t.Base
 }
 
 // resolveAuto is the terminal-detection branch of Resolve, split out so each
