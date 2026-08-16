@@ -76,10 +76,11 @@ issue-type and dependency-type sets are unchanged, and so are `bv`'s.
 
 ### Bug Fixes
 
-- fix(theme): stop the open-enum switches depending on a flaky lint ([9bed83a](https://github.com/Toshik1978/beads-viewer/commit/9bed83a))
+- fix(theme): stop the open-enum switches depending on a flaky lint ([eebf1a6](https://github.com/Toshik1978/beads-viewer/commit/eebf1a6))
 
 ### Others
 
+- ci: choose the Go patch release rather than inheriting it ([e333d23](https://github.com/Toshik1978/beads-viewer/commit/e333d23))
 - ci: stop the lint cache deciding what the lint reports ([78f676d](https://github.com/Toshik1978/beads-viewer/commit/78f676d0c59f810d363a7e5e471f65a8d5d5f09d))
 - docs: record the spec and plan for tracking br v1.6.0's record shape ([bddeb55](https://github.com/Toshik1978/beads-viewer/commit/bddeb55d898af9e2ab43430cb78666d9c147f5b8))
 - refactor(boardview): drop the assignee swimlane br 1.6.0 removed ([25e7e12](https://github.com/Toshik1978/beads-viewer/commit/25e7e1289e8beaaf349dc7bebabd8c645b9a8fde))
