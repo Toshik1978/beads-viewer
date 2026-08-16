@@ -9,6 +9,82 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.6.0 — 2026-08-16
+
+`br` v1.6.0 removed fifteen never-populated fields from its issue record.
+`bv` modelled three of them and drew one: `assignee`. This release follows
+that removal. The board's assignee swimlane is gone, the expanded card and
+the detail pane no longer carry an assignee, and the decode target drops
+`assignee`, `estimated_minutes` and `due_at` — the last two of which `bv`
+read from disk and never showed anyone.
+
+**The `s` key now cycles three swimlane modes rather than four**: status,
+priority, type. No other key moves, no issue's blocked or ready state
+changes, and no column outside the removed lane is affected. An expanded card
+is exactly the height it was; the line that carried the assignee now carries
+labels alone.
+
+### The assignee swimlane is gone
+
+- `s` cycled status → priority → assignee → type. It now cycles status →
+  priority → type, and the swimlane indicator in the status bar can no longer
+  read "Assignee".
+- The lane had already stopped grouping anything. With `assignee` absent from
+  the record, every card fell into the single "Unassigned" catch-all column,
+  so the keystroke reshuffled the board into one pile. Removing the mode
+  removes a press that did nothing rather than a way of seeing the work.
+- The catch-all mechanism itself is untouched and still earns its place on the
+  status and type lanes, where a column can legitimately share a title with
+  the catch-all beside it.
+
+### Cards and the detail pane drop the assignee
+
+- An expanded card's first extra line was the assignee followed by the
+  labels. It is now the labels alone, and still falls back to an em dash when
+  there are none — a blank row there reads as a rendering fault rather than as
+  an empty field.
+- The detail pane's metadata line drops the assignee from between the issue
+  type and the created date. Every other field on that line is unchanged, and
+  it still wraps rather than truncating, because created, updated and closed
+  overflow an ordinary pane width without any help.
+
+### If you are still running an older `br`
+
+- `bv` ignores JSON fields it does not model, so a workspace last written by
+  `br` v1.5.0 or earlier — one whose `issues.jsonl` still carries all three
+  removed keys on every record — opens exactly as it did before. Nothing
+  errors, nothing is skipped, and no record is dropped.
+- **What does change for that workspace is that a populated `assignee` is no
+  longer displayed.** If you were reading assignees in `bv` that an older `br`
+  wrote, this release stops showing them. `br` v1.6.0 drops the field from the
+  file on its next flush in any case, so this is a matter of when rather than
+  whether.
+- `owner` is untouched. `br` kept it deliberately as the surviving
+  person-field, `bv` still decodes it, and — as before this release — does not
+  display it.
+
+### Nothing else in `br` v1.6.0 crosses into `bv`
+
+The rest of that release does not reach this program, and nothing here had to
+change for it. The sync witness subsystem and the close-policy gates were
+never read: `bv` has never opened `.beads/policy.yaml`, and its ready and
+blocked counts have always meant the built-in rule. The JSONL
+`format_version` marker was never modelled, so a file still stamped with it
+decodes cleanly and the key is simply ignored. Schema v19 rewrites SQLite
+columns, and `bv` reads the JSONL rather than `beads.db`. `br`'s status,
+issue-type and dependency-type sets are unchanged, and so are `bv`'s.
+
+### Others
+
+- ci: stop the lint cache deciding what the lint reports ([78f676d](https://github.com/Toshik1978/beads-viewer/commit/78f676d0c59f810d363a7e5e471f65a8d5d5f09d))
+- docs: record the spec and plan for tracking br v1.6.0's record shape ([bddeb55](https://github.com/Toshik1978/beads-viewer/commit/bddeb55d898af9e2ab43430cb78666d9c147f5b8))
+- refactor(boardview): drop the assignee swimlane br 1.6.0 removed ([25e7e12](https://github.com/Toshik1978/beads-viewer/commit/25e7e1289e8beaaf349dc7bebabd8c645b9a8fde))
+- refactor(tui): stop rendering the assignee br 1.6.0 removed ([0fecfd9](https://github.com/Toshik1978/beads-viewer/commit/0fecfd9c8e807c31d14e3978a48c672ee87345fd))
+- refactor(beads): drop the three fields br 1.6.0 removed ([92581d9](https://github.com/Toshik1978/beads-viewer/commit/92581d9f08fc2a9b5a5866e833263f0f050f2cdd))
+- docs: state three swimlanes and 23 Issue fields ([2e69a21](https://github.com/Toshik1978/beads-viewer/commit/2e69a21da0376f6483561139e498edd384934afe))
+
+---
+
 ## v1.5.1 — 2026-08-08
 
 Three ways `bv` could leave you without an explanation, each at the moment you
