@@ -29,7 +29,7 @@ const maxTypeFields = 20
 
 // exemptType is the one type CLAUDE.md excuses, and the reason is why it can
 // be a name rather than a rule: beads.Issue is the JSONL decode target, so its
-// 26 fields are br's wire format rather than a design this project chose.
+// 23 fields are br's wire format rather than a design this project chose.
 // Deleting a field to satisfy a cap would mean dropping data the viewer is
 // supposed to render.
 //

@@ -147,7 +147,7 @@ func (s *snapshotTestSuite) TestSortOrderIsDeterministic() {
 func (s *snapshotTestSuite) TestConstructionIsIndependentOfTheCallerSlice() {
 	// Prove copy-on-the-way-in. A naive copy(dst, src) over []Issue copies
 	// only the Issue struct's slice headers and its *time.Time pointers, so
-	// Labels/Dependencies/Comments and ClosedAt/DueAt/DeferUntil/DeletedAt
+	// Labels/Dependencies/Comments and ClosedAt/DeferUntil/DeletedAt
 	// would still alias the caller's memory unless cloned explicitly.
 	closedAt := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
 	issues := []beads.Issue{

@@ -1,6 +1,8 @@
 package beads_test
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -193,4 +195,46 @@ func (s *issueTestSuite) TestIssueIsTombstone() {
 	s.True(beads.Issue{Status: beads.StatusOpen, DeletedAt: &deleted}.IsTombstone())
 
 	s.False(beads.Issue{Status: beads.StatusOpen}.IsTombstone())
+}
+
+// TestRemovedFieldsAreIgnoredNotRejected pins the compatibility half of br
+// v1.6.0's field removal. A workspace whose issues.jsonl was last flushed by
+// br <= 1.5.0 still carries assignee, estimated_minutes and due_at on every
+// record. bv renders rather than validates, so those keys must decode as
+// unmodelled fields — silently dropped, no error — rather than failing the
+// read of a workspace that has simply not been touched by the new br yet.
+//
+// It goes through beads.DecodeJSONL rather than json.Unmarshal directly,
+// because DecodeJSONL is where a switch to DisallowUnknownFields would
+// actually happen; a test that bypasses it would stay green through exactly
+// the regression it exists to catch.
+func (s *issueTestSuite) TestRemovedFieldsAreIgnoredNotRejected() {
+	line := `{"id":"bv-1","title":"t","status":"open","issue_type":"task",` +
+		`"assignee":"anton","estimated_minutes":30,"due_at":"2026-07-01T09:00:00Z",` +
+		`"compaction_level":2,"original_size":900}` + "\n"
+
+	issues, err := beads.DecodeJSONL(strings.NewReader(line))
+	s.Require().NoError(err)
+	s.Require().Len(issues, 1)
+
+	s.Equal("bv-1", issues[0].ID, "the modelled fields still decode")
+	s.Equal(beads.StatusOpen, issues[0].Status)
+}
+
+// TestIssueDoesNotModelTheRemovedFields is a structural guard, not a decode
+// test: it fails at compile time if a field comes back, and by name if the
+// JSON tag does. Reflection rather than a compile-time reference, because a
+// reference to a deleted field would not compile in the first place and so
+// could never be committed as a failing test.
+func (s *issueTestSuite) TestIssueDoesNotModelTheRemovedFields() {
+	t := reflect.TypeFor[beads.Issue]()
+
+	for _, tag := range []string{"assignee", "estimated_minutes", "due_at"} {
+		s.Run(tag, func() {
+			for field := range t.Fields() {
+				s.NotEqual(tag, field.Tag.Get("json"),
+					"br v1.6.0 removed %q from the record; bv must not model it", tag)
+			}
+		})
+	}
 }

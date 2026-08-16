@@ -20,10 +20,16 @@ type Comment struct {
 // pointers or zero-valued rather than required, because br omits empty ones
 // (serde skip_serializing_if), so absence is normal and not an error.
 //
-// The struct carries 26 fields, above the Global Constraints' 20-field
+// The struct carries 23 fields, above the Global Constraints' 20-field
 // tripwire for behavioural god objects; that limit targets state-heavy
 // types, and a flat DTO mirroring an external schema is the intended
 // exception, so the record is kept whole rather than split.
+//
+// It carried 26 until br v1.6.0 removed fifteen never-populated fields from
+// its own record, three of which this struct modelled. A file an older br
+// wrote still carries them; they decode as unmodelled fields and are
+// dropped, which is the "renders rather than validates" rule doing exactly
+// what it exists for.
 type Issue struct {
 	ID                 string       `json:"id"`
 	Title              string       `json:"title"`
@@ -34,15 +40,12 @@ type Issue struct {
 	Status             Status       `json:"status"`
 	Priority           Priority     `json:"priority"`
 	IssueType          IssueType    `json:"issue_type"`
-	Assignee           string       `json:"assignee"`
 	Owner              string       `json:"owner"`
-	EstimatedMinutes   int          `json:"estimated_minutes"`
 	CreatedAt          time.Time    `json:"created_at"`
 	CreatedBy          string       `json:"created_by"`
 	UpdatedAt          time.Time    `json:"updated_at"`
 	ClosedAt           *time.Time   `json:"closed_at"`
 	CloseReason        string       `json:"close_reason"`
-	DueAt              *time.Time   `json:"due_at"`
 	DeferUntil         *time.Time   `json:"defer_until"`
 	ExternalRef        string       `json:"external_ref"`
 	SourceRepo         string       `json:"source_repo"`

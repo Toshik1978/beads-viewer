@@ -420,7 +420,7 @@ func ownPrevails(own, theirs DepType) bool {
 // reach into the snapshot's memory, so the snapshot never aliases anything the
 // caller still holds: Labels, FormerIDs, Dependencies and Comments are slices
 // that a shallow struct copy would leave pointing at the caller's backing
-// arrays, and ClosedAt/DueAt/DeferUntil/DeletedAt are pointers a shallow copy
+// arrays, and ClosedAt/DeferUntil/DeletedAt are pointers a shallow copy
 // would leave pointing at the caller's time.Time values. A later append,
 // in-place edit, or dereferencing assignment on the caller's side would
 // otherwise leak straight through into what is meant to be an immutable
@@ -431,7 +431,6 @@ func cloneIssue(issue Issue) Issue {
 	issue.Dependencies = slices.Clone(issue.Dependencies)
 	issue.Comments = slices.Clone(issue.Comments)
 	issue.ClosedAt = clonePtr(issue.ClosedAt)
-	issue.DueAt = clonePtr(issue.DueAt)
 	issue.DeferUntil = clonePtr(issue.DeferUntil)
 	issue.DeletedAt = clonePtr(issue.DeletedAt)
 
