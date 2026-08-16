@@ -15,17 +15,16 @@ import (
 // SwimLane selects how Group partitions a snapshot into columns.
 type SwimLane int
 
-// The four swimlane modes. Next cycles through them in this order and wraps
+// The three swimlane modes. Next cycles through them in this order and wraps
 // back to LaneStatus.
 const (
 	LaneStatus SwimLane = iota
 	LanePriority
-	LaneAssignee
 	LaneType
 )
 
 // laneCount is how many modes Next cycles through.
-const laneCount = 4
+const laneCount = 3
 
 // Column is one board column: a title, the issues placed in it, and a
 // summary of them.
@@ -34,11 +33,11 @@ type Column struct {
 	Issues []*beads.Issue
 	Stats  Stats
 	// Catchall marks a column that collects everything a mode's other
-	// columns don't claim (Unassigned, Other) rather than one built from a
-	// distinct value actually present in the data. The two can share a
-	// title — an issue genuinely typed "Other" collides with the type
-	// catch-all — so the renderer needs this to tell them apart even though
-	// Group cannot rename either without breaking the other invariant.
+	// columns don't claim, rather than one built from a distinct value
+	// actually present in the data. The two can share a title — an issue
+	// genuinely typed "Other" collides with the type catch-all — so the
+	// renderer needs this to tell them apart even though Group cannot
+	// rename either without breaking the other invariant.
 	Catchall bool
 }
 
@@ -51,7 +50,7 @@ type Stats struct {
 }
 
 // Name renders the mode for the board's swimlane indicator. It never returns
-// empty: SwimLane is a closed set of four values, and every one of them must
+// empty: SwimLane is a closed set of three values, and every one of them must
 // have a label, including a value reached through Next's wraparound.
 //
 // Nothing outside this package's own tests calls Name yet, and the board
@@ -64,20 +63,18 @@ func (l SwimLane) Name() string {
 		return "Status"
 	case LanePriority:
 		return "Priority"
-	case LaneAssignee:
-		return "Assignee"
 	case LaneType:
 		return "Type"
 	}
 
-	// Reached only by a SwimLane value outside the four known modes — not
+	// Reached only by a SwimLane value outside the three known modes — not
 	// producible through Next, but SwimLane is an exported int, so a caller
 	// can construct one directly. Falling back rather than panicking keeps
 	// Name total the same way Group itself falls back to status grouping.
 	return "Status"
 }
 
-// Valid reports whether l is one of the four defined swimlane modes.
+// Valid reports whether l is one of the three defined swimlane modes.
 func (l SwimLane) Valid() bool {
 	return l >= LaneStatus && l <= LaneType
 }
@@ -105,7 +102,7 @@ func (l SwimLane) Next() SwimLane {
 // board, because "no work here" and "the grouping has a gap" render
 // identically. Each mode below has an explicit catch-all column rather than a
 // switch whose default falls through, and Group's own default — any lane
-// value outside the four known modes — falls back to status grouping rather
+// value outside the three known modes — falls back to status grouping rather
 // than returning nothing. A nil snapshot is treated as empty rather than
 // panicking on snap.Issues(), matching the doc comment's claim to totality.
 func Group(snap *beads.Snapshot, lane SwimLane) []Column {
@@ -118,13 +115,11 @@ func Group(snap *beads.Snapshot, lane SwimLane) []Column {
 		return groupByStatus(snap)
 	case LanePriority:
 		return groupByPriority(snap)
-	case LaneAssignee:
-		return groupByAssignee(snap)
 	case LaneType:
 		return groupByType(snap)
 	}
 
-	// Reached only by a SwimLane value outside the four known modes; see
+	// Reached only by a SwimLane value outside the three known modes; see
 	// Name's identical fallback for why this cannot be a switch default.
 	return groupByStatus(snap)
 }
@@ -185,39 +180,6 @@ func groupByPriority(snap *beads.Snapshot) []Column {
 	for _, issue := range snap.Issues() {
 		idx := int(issue.Priority.Clamp())
 		cols[idx].Issues = append(cols[idx].Issues, issue)
-	}
-
-	return withStats(snap, cols)
-}
-
-// groupByAssignee assigns each issue to a column named after its assignee,
-// sorted, with every unassigned issue collected into a trailing Unassigned
-// column. Sorting the distinct names first — rather than ranging the set
-// directly — is what keeps the column order identical across calls; map
-// iteration order is not. A whitespace-only assignee is treated the same as
-// an empty one, so a hand-edited " " does not produce a visually untitled
-// column of its own.
-func groupByAssignee(snap *beads.Snapshot) []Column {
-	issues := snap.Issues()
-
-	names := distinctSorted(issues, func(issue *beads.Issue) string { return issue.Assignee })
-	index := make(map[string]int, len(names))
-	cols := make([]Column, 0, len(names)+1)
-	for i, name := range names {
-		index[name] = i
-		cols = append(cols, Column{Title: name})
-	}
-	unassigned := len(cols)
-	cols = append(cols, Column{Title: "Unassigned", Catchall: true})
-
-	for _, issue := range issues {
-		if strings.TrimSpace(issue.Assignee) == "" {
-			cols[unassigned].Issues = append(cols[unassigned].Issues, issue)
-
-			continue
-		}
-		i := index[issue.Assignee]
-		cols[i].Issues = append(cols[i].Issues, issue)
 	}
 
 	return withStats(snap, cols)

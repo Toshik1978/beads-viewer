@@ -11,8 +11,8 @@ import (
 //
 // Column.Catchall — not Title — is the only reliable signal that a column is
 // the catch-all rather than a real column that happens to share its title
-// (a project can have an assignee literally named "Unassigned"), so this is
-// the one place that bool actually changes what gets rendered. Exported so
+// (a project can use a custom issue type that displays as "Other"), so this
+// is the one place that bool actually changes what gets rendered. Exported so
 // a caller (and this package's own tests) can assert on the exact marker
 // rather than guessing at the header's shape.
 const CatchallMarker = "» "

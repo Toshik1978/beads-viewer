@@ -34,11 +34,11 @@ func (s *groupTestSuite) sample() *beads.Snapshot {
 	return beads.NewSnapshot([]beads.Issue{
 		{
 			ID: "a", Title: "a", Status: beads.StatusOpen, Priority: beads.PriorityHigh,
-			IssueType: beads.TypeBug, Assignee: "anton",
+			IssueType: beads.TypeBug,
 		},
 		{
 			ID: "b", Title: "b", Status: beads.StatusInProgress, Priority: beads.PriorityMedium,
-			IssueType: beads.TypeTask, Assignee: "anton",
+			IssueType: beads.TypeTask,
 		},
 		{
 			ID: "c", Title: "c", Status: beads.StatusClosed, Priority: beads.PriorityLow,
@@ -61,8 +61,7 @@ func (s *groupTestSuite) sample() *beads.Snapshot {
 func (s *groupTestSuite) TestGroupingIsTotal() {
 	snap := s.sample()
 	for _, lane := range []boardview.SwimLane{
-		boardview.LaneStatus, boardview.LanePriority,
-		boardview.LaneAssignee, boardview.LaneType,
+		boardview.LaneStatus, boardview.LanePriority, boardview.LaneType,
 	} {
 		s.Run(lane.Name(), func() {
 			// Keyed by pointer identity, not issue ID: beads.NewSnapshot
@@ -96,8 +95,7 @@ func (s *groupTestSuite) TestGroupingIsTotalWithDuplicateIDs() {
 	})
 
 	for _, lane := range []boardview.SwimLane{
-		boardview.LaneStatus, boardview.LanePriority,
-		boardview.LaneAssignee, boardview.LaneType,
+		boardview.LaneStatus, boardview.LanePriority, boardview.LaneType,
 	} {
 		s.Run(lane.Name(), func() {
 			placements := map[*beads.Issue]int{}
@@ -187,72 +185,17 @@ func (s *groupTestSuite) TestInProgressAndBlockedLandsInBlocked() {
 	s.Empty(byTitle["In Progress"])
 }
 
-func (s *groupTestSuite) TestAssigneeColumnsIncludeUnassigned() {
-	cols := boardview.Group(s.sample(), boardview.LaneAssignee)
-
-	titles := make([]string, len(cols))
-	for i, c := range cols {
-		titles[i] = c.Title
-	}
-	s.Contains(titles, "anton")
-	s.Contains(titles, "Unassigned")
-	s.Equal("Unassigned", titles[len(titles)-1], "unassigned sorts last")
-}
-
-// TestAssigneeCatchallDistinguishesFromRealColumnWithSameTitle covers a real
-// assignee literally named "Unassigned" colliding in title with the
-// catch-all Group always appends. Group does not rename either side — that
-// would just move the collision — so Catchall is what lets a renderer (Task
-// 6.2) tell them apart.
-func (s *groupTestSuite) TestAssigneeCatchallDistinguishesFromRealColumnWithSameTitle() {
+// TestWhitespaceOnlyValueFoldsIntoCatchall covers a hand-edited " " type,
+// which must not open a visually blank column of its own.
+func (s *groupTestSuite) TestWhitespaceOnlyValueFoldsIntoCatchall() {
 	snap := beads.NewSnapshot([]beads.Issue{
-		{ID: "1", Title: "1", Status: beads.StatusOpen, Assignee: "Unassigned"},
-		{ID: "2", Title: "2", Status: beads.StatusOpen},
+		{ID: "1", Title: "1", Status: beads.StatusOpen, IssueType: beads.IssueType("   ")},
 	})
-
-	cols := boardview.Group(snap, boardview.LaneAssignee)
-	s.Require().Len(cols, 2)
-
-	var named, catchall *boardview.Column
-	for i := range cols {
-		if cols[i].Catchall {
-			catchall = &cols[i]
-		} else {
-			named = &cols[i]
-		}
-	}
-	s.Require().NotNil(named)
-	s.Require().NotNil(catchall)
-	s.Equal("Unassigned", named.Title)
-	s.Equal("Unassigned", catchall.Title)
-	s.Equal([]string{"1"}, idsOf(named.Issues))
-	s.Equal([]string{"2"}, idsOf(catchall.Issues))
-}
-
-// TestWhitespaceOnlyValuesFoldIntoCatchall covers a hand-edited " " assignee
-// or type, which must not open a visually blank column of its own.
-func (s *groupTestSuite) TestWhitespaceOnlyValuesFoldIntoCatchall() {
-	s.Run("Assignee", func() {
-		snap := beads.NewSnapshot([]beads.Issue{
-			{ID: "1", Title: "1", Status: beads.StatusOpen, Assignee: "   "},
-		})
-		cols := boardview.Group(snap, boardview.LaneAssignee)
-		s.Require().Len(cols, 1, "a whitespace-only assignee must not open its own column")
-		s.Equal("Unassigned", cols[0].Title)
-		s.True(cols[0].Catchall)
-		s.Equal([]string{"1"}, idsOf(cols[0].Issues))
-	})
-
-	s.Run("Type", func() {
-		snap := beads.NewSnapshot([]beads.Issue{
-			{ID: "1", Title: "1", Status: beads.StatusOpen, IssueType: beads.IssueType("   ")},
-		})
-		cols := boardview.Group(snap, boardview.LaneType)
-		s.Require().Len(cols, 1, "a whitespace-only type must not open its own column")
-		s.Equal("Other", cols[0].Title)
-		s.True(cols[0].Catchall)
-		s.Equal([]string{"1"}, idsOf(cols[0].Issues))
-	})
+	cols := boardview.Group(snap, boardview.LaneType)
+	s.Require().Len(cols, 1, "a whitespace-only type must not open its own column")
+	s.Equal("Other", cols[0].Title)
+	s.True(cols[0].Catchall)
+	s.Equal([]string{"1"}, idsOf(cols[0].Issues))
 }
 
 func (s *groupTestSuite) TestPriorityColumnsAreAlwaysAllFive() {
@@ -342,19 +285,19 @@ func (s *groupTestSuite) TestTypeColumnsMergeDisplayCaseVariants() {
 }
 
 // TestDistinctColumnsHaveNoDuplicateTitles pins that the distinct-value set
-// backing Assignee and Type columns is actually a set: collecting values into
-// a slice without deduplicating first would open one column per issue
-// sharing an assignee rather than one column per distinct assignee.
+// backing Type columns is actually a set: collecting values into a slice
+// without deduplicating first would open one column per issue sharing a type
+// rather than one column per distinct type.
 func (s *groupTestSuite) TestDistinctColumnsHaveNoDuplicateTitles() {
 	snap := beads.NewSnapshot([]beads.Issue{
-		{ID: "1", Title: "1", Status: beads.StatusOpen, Assignee: "zoe"},
-		{ID: "2", Title: "2", Status: beads.StatusOpen, Assignee: "zoe"},
-		{ID: "3", Title: "3", Status: beads.StatusOpen, Assignee: "zoe"},
+		{ID: "1", Title: "1", Status: beads.StatusOpen, IssueType: beads.TypeBug},
+		{ID: "2", Title: "2", Status: beads.StatusOpen, IssueType: beads.TypeBug},
+		{ID: "3", Title: "3", Status: beads.StatusOpen, IssueType: beads.TypeBug},
 	})
 
-	cols := boardview.Group(snap, boardview.LaneAssignee)
-	s.Require().Len(cols, 2, "one column for zoe, one trailing Unassigned catch-all")
-	s.Equal("zoe", cols[0].Title)
+	cols := boardview.Group(snap, boardview.LaneType)
+	s.Require().Len(cols, 2, "one column for Bug, one trailing Other catch-all")
+	s.Equal("Bug", cols[0].Title)
 	s.ElementsMatch([]string{"1", "2", "3"}, idsOf(cols[0].Issues))
 }
 
@@ -456,22 +399,21 @@ func (s *groupTestSuite) TestOldestDaysClampsFutureCreatedAt() {
 func (s *groupTestSuite) TestSwimLaneCycles() {
 	lane := boardview.LaneStatus
 	seen := map[boardview.SwimLane]bool{}
-	for range 4 {
+	for range 3 {
 		seen[lane] = true
 		lane = lane.Next()
 	}
-	s.Len(seen, 4, "Next must visit all four modes")
+	s.Len(seen, 3, "Next must visit all three modes")
 	s.Equal(boardview.LaneStatus, lane, "and return to the start")
 }
 
 // TestSwimLaneNextOrder pins the cycle direction. TestSwimLaneCycles is
-// satisfied by any 4-cycle, including a reversed one
-// (Status -> Type -> Assignee -> Priority -> Status), which would leave the
-// key Task 6.2 binds to Next() traveling backwards from what a user expects.
+// satisfied by any 3-cycle, including the reversed one
+// (Status -> Type -> Priority -> Status), which would leave the key bound to
+// Next() traveling backwards from what a user expects.
 func (s *groupTestSuite) TestSwimLaneNextOrder() {
 	s.Equal(boardview.LanePriority, boardview.LaneStatus.Next())
-	s.Equal(boardview.LaneAssignee, boardview.LanePriority.Next())
-	s.Equal(boardview.LaneType, boardview.LaneAssignee.Next())
+	s.Equal(boardview.LaneType, boardview.LanePriority.Next())
 	s.Equal(boardview.LaneStatus, boardview.LaneType.Next())
 }
 
@@ -481,7 +423,7 @@ func (s *groupTestSuite) TestSwimLaneNextOrder() {
 // exactly one Next call.
 func (s *groupTestSuite) TestSwimLaneNextNormalisesOutOfRange() {
 	s.False(boardview.SwimLane(-2).Valid())
-	s.False(boardview.SwimLane(4).Valid())
+	s.False(boardview.SwimLane(3).Valid(), "one past LaneType is the first invalid value")
 	s.True(boardview.LaneStatus.Valid())
 	s.True(boardview.LaneType.Valid())
 
@@ -493,8 +435,7 @@ func (s *groupTestSuite) TestSwimLaneNextNormalisesOutOfRange() {
 func (s *groupTestSuite) TestSwimLaneNamesAreDistinctAndNonEmpty() {
 	seen := map[string]bool{}
 	for _, lane := range []boardview.SwimLane{
-		boardview.LaneStatus, boardview.LanePriority,
-		boardview.LaneAssignee, boardview.LaneType,
+		boardview.LaneStatus, boardview.LanePriority, boardview.LaneType,
 	} {
 		name := lane.Name()
 		s.NotEmpty(name, "lane %d must have a name", lane)
@@ -505,8 +446,7 @@ func (s *groupTestSuite) TestSwimLaneNamesAreDistinctAndNonEmpty() {
 
 func (s *groupTestSuite) TestEmptySnapshot() {
 	for _, lane := range []boardview.SwimLane{
-		boardview.LaneStatus, boardview.LanePriority,
-		boardview.LaneAssignee, boardview.LaneType,
+		boardview.LaneStatus, boardview.LanePriority, boardview.LaneType,
 	} {
 		s.Run(lane.Name(), func() {
 			s.NotPanics(func() { _ = boardview.Group(beads.NewSnapshot(nil), lane) })
@@ -520,8 +460,7 @@ func (s *groupTestSuite) TestEmptySnapshot() {
 // reaching Group is not purely hypothetical.
 func (s *groupTestSuite) TestNilSnapshotDoesNotPanic() {
 	for _, lane := range []boardview.SwimLane{
-		boardview.LaneStatus, boardview.LanePriority,
-		boardview.LaneAssignee, boardview.LaneType,
+		boardview.LaneStatus, boardview.LanePriority, boardview.LaneType,
 	} {
 		s.Run(lane.Name(), func() {
 			var got []boardview.Column
@@ -531,28 +470,16 @@ func (s *groupTestSuite) TestNilSnapshotDoesNotPanic() {
 	}
 }
 
-// TestColumnOrderIsDeterministic uses a fixture with three distinct
-// assignees and three distinct types, each declared out of sorted order
-// (zoe, adam, mel), so a missing or reversed sort is visible in the exact
-// title sequence rather than only in cross-call equality — a fixture with
-// one distinct value cannot move regardless of whether sorting happens.
+// TestColumnOrderIsDeterministic uses a fixture with three distinct types,
+// each declared out of sorted order (Docs, Chore, Bug), so a missing or
+// reversed sort is visible in the exact title sequence rather than only in
+// cross-call equality — a fixture with one distinct value cannot move
+// regardless of whether sorting happens.
 func (s *groupTestSuite) TestColumnOrderIsDeterministic() {
 	snap := beads.NewSnapshot([]beads.Issue{
-		{ID: "z", Title: "z", Status: beads.StatusOpen, Assignee: "zoe", IssueType: beads.TypeBug},
-		{ID: "y", Title: "y", Status: beads.StatusOpen, Assignee: "adam", IssueType: beads.TypeChore},
-		{ID: "x", Title: "x", Status: beads.StatusOpen, Assignee: "mel", IssueType: beads.TypeDocs},
-	})
-
-	s.Run("Assignee", func() {
-		want := []string{"adam", "mel", "zoe", "Unassigned"}
-		for range 20 {
-			cols := boardview.Group(snap, boardview.LaneAssignee)
-			titles := make([]string, len(cols))
-			for i, c := range cols {
-				titles[i] = c.Title
-			}
-			s.Equal(want, titles, "column order must not track declaration or map iteration order")
-		}
+		{ID: "z", Title: "z", Status: beads.StatusOpen, IssueType: beads.TypeDocs},
+		{ID: "y", Title: "y", Status: beads.StatusOpen, IssueType: beads.TypeChore},
+		{ID: "x", Title: "x", Status: beads.StatusOpen, IssueType: beads.TypeBug},
 	})
 
 	s.Run("Type", func() {

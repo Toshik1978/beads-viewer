@@ -281,7 +281,7 @@ func (s *boardTestSuite) TestCycleSwimLanePreservesSelection() {
 	m := s.model(s.sample(), 140, 30)
 	s.Require().True(m.SelectByID("c"))
 
-	for range 4 {
+	for range 3 {
 		m.CycleSwimLane()
 		s.Equal("c", m.SelectedID(), "selection is by id and survives regrouping")
 	}
@@ -300,14 +300,14 @@ func (s *boardTestSuite) TestStatusLaneKeepsClosedDespiteHideClosed() {
 }
 
 // TestOtherLanesHonourHideClosed is the other half of that exemption: only the
-// status lane earns it. Priority, assignee and type have no Closed column, so
-// exempting them would fold every closed issue in among the live work — which
-// in a real workspace is most of the cards on the board.
+// status lane earns it. Priority and type have no Closed column, so exempting
+// them would fold every closed issue in among the live work — which in a real
+// workspace is most of the cards on the board.
 func (s *boardTestSuite) TestOtherLanesHonourHideClosed() {
 	m := s.model(s.sample(), 140, 30)
 	m.SetHideClosed(true)
 
-	for _, lane := range []string{"priority", "assignee", "type"} {
+	for _, lane := range []string{"priority", "type"} {
 		m.CycleSwimLane()
 		s.Run(lane, func() {
 			s.False(m.SelectByID("d"), "the closed card is off the board")
@@ -324,7 +324,7 @@ func (s *boardTestSuite) TestCyclingBackToStatusRestoresClosed() {
 	m := s.model(s.sample(), 140, 30)
 	m.SetHideClosed(true)
 
-	for range 4 {
+	for range 3 {
 		m.CycleSwimLane()
 	}
 
@@ -336,7 +336,7 @@ func (s *boardTestSuite) TestCyclingBackToStatusRestoresClosed() {
 func (s *boardTestSuite) TestHideClosedOffLeavesEveryLaneAlone() {
 	m := s.model(s.sample(), 140, 30)
 
-	for range 4 {
+	for range 3 {
 		s.True(m.SelectByID("d"))
 		m.CycleSwimLane()
 	}
@@ -473,34 +473,34 @@ func (s *boardTestSuite) TestColumnHeaderReflectsStatsNotJustCount() {
 
 // TestCatchallColumnIsMarkedDistinctly pins amendment 1: Catchall, not
 // Title, is what a renderer must key off. A project can have a real column
-// literally titled "Unassigned" that collides with the catch-all's own
-// title, so the rendered header for the two must differ even though
-// col.Title is identical for both.
+// literally titled "Other" (an issue genuinely typed "Other") that collides
+// with the catch-all's own title, so the rendered header for the two must
+// differ even though col.Title is identical for both.
 //
 // The two columns are given different issue counts (1 vs 2) deliberately: a
-// renderer that keys the marker off Title == "Unassigned" instead of
+// renderer that keys the marker off Title == "Other" instead of
 // col.Catchall would mark both columns identically and still pass an
 // assertion built only from the shared title string, since neither
 // "Contains .. marker+title" nor "NotContains .. marker+title twice" can
 // tell two same-titled, same-marked columns apart. Pinning the header
 // against each column's own count is what makes a Title-keyed mutant fail
-// here: it stamps the marker onto the real column's "Unassigned (1)" too, so
-// "Unassigned (1)" without a leading marker never appears, and NotContains
-// below catches that directly.
+// here: it stamps the marker onto the real column's "Other (1)" too, so
+// "Other (1)" without a leading marker never appears, and NotContains below
+// catches that directly.
 func (s *boardTestSuite) TestCatchallColumnIsMarkedDistinctly() {
 	m := s.model([]beads.Issue{
-		{ID: "1", Title: "1", Status: beads.StatusOpen, Assignee: "Unassigned"},
-		{ID: "2", Title: "2", Status: beads.StatusOpen},
-		{ID: "3", Title: "3", Status: beads.StatusOpen},
+		{ID: "1", Title: "1", Status: beads.StatusOpen, IssueType: beads.IssueType("Other")},
+		{ID: "2", Title: "2", Status: beads.StatusOpen, IssueType: beads.IssueType(" ")},
+		{ID: "3", Title: "3", Status: beads.StatusOpen, IssueType: beads.IssueType(" ")},
 	}, 140, 30)
 	m.CycleSwimLane() // Status -> Priority
-	m.CycleSwimLane() // Priority -> Assignee
+	m.CycleSwimLane() // Priority -> Type
 
 	out := m.View()
-	s.Contains(out, "Unassigned (1)", "the real assignee column's header must render unmarked")
-	s.NotContains(out, boardview.CatchallMarker+"Unassigned (1)",
+	s.Contains(out, "Other (1)", "the real type column's header must render unmarked")
+	s.NotContains(out, boardview.CatchallMarker+"Other (1)",
 		"the real column, count 1, must not carry the catch-all marker")
-	s.Contains(out, boardview.CatchallMarker+"Unassigned (2)",
+	s.Contains(out, boardview.CatchallMarker+"Other (2)",
 		"the catch-all column, count 2, must carry the catch-all marker")
 }
 
@@ -601,19 +601,22 @@ func (s *boardTestSuite) TestGoldenRenderingWithScrollMarkers() {
 // MoveRight/MoveLeft specifically and asserts the FRAME itself changes and
 // the window's contents shift with it.
 //
-// 6 distinct assignees plus the trailing Unassigned catch-all is 7 columns;
-// at width 58 that fits 2 at a time (same arithmetic as the scrolled golden
-// above), so u1 starts inside the window and u4 (three MoveRight presses
-// away) starts three columns past its right edge.
+// 6 distinct types plus the trailing Other catch-all is 7 columns; at width
+// 58 that fits 2 at a time (same arithmetic as the scrolled golden above), so
+// u1 starts inside the window and u4 (three MoveRight presses away) starts
+// three columns past its right edge.
 func (s *boardTestSuite) TestColumnWindowFollowsTheCursorInBothDirections() {
 	issues := make([]beads.Issue, 6)
 	for i := range issues {
 		name := fmt.Sprintf("u%d", i+1)
-		issues[i] = beads.Issue{ID: name, Title: name, Status: beads.StatusOpen, Assignee: name}
+		issues[i] = beads.Issue{
+			ID: name, Title: name, Status: beads.StatusOpen,
+			IssueType: beads.IssueType(name),
+		}
 	}
 	m := s.model(issues, 58, 40)
 	m.CycleSwimLane() // Status -> Priority
-	m.CycleSwimLane() // Priority -> Assignee
+	m.CycleSwimLane() // Priority -> Type
 
 	before := m.View()
 	s.Contains(before, "u1", "the first column starts inside the initial window")
