@@ -169,7 +169,7 @@ reading before raising one and the half no test can hold.
   it grows, so the line cap does not apply to it.
 - No struct has more than **20 fields**. `beads.Issue` is exempt: it is the
   JSONL decode target, and its field count mirrors `br`'s own wire format
-  rather than anything this project chose — currently 26. This said
+  rather than anything this project chose — currently 23. This said
   "behavioural type" until `bv-vpv` gave it a test, and the word did not
   survive being made precise: the obvious reading, "declares at least one
   method", excuses `tui.KeyMap` (17 fields, no methods, the closest thing in

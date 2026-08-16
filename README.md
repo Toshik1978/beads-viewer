@@ -125,7 +125,7 @@ rather than shipping.
 | `p` | jump to parent (tree) |
 | `o` | expand all (tree) |
 | `O` | collapse all (tree) |
-| `s` | cycle swimlane grouping (board: status, priority, assignee, type) |
+| `s` | cycle swimlane grouping (board: status, priority, type) |
 | `pgup` / `ctrl+u` | scroll the detail pane up |
 | `pgdown` / `ctrl+d` | scroll the detail pane down |
 | `ctrl+b` | page up (tree) |
