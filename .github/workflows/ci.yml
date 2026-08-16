@@ -43,10 +43,28 @@ jobs:
           # The licensing sweep runs `git ls-files`.
           fetch-depth: 0
 
+      # check-latest, at roughly 20s a job: go.mod says `go 1.26` with no
+      # patch, and without this the action resolves that against the runner
+      # image's pre-baked tool cache and stops — `Found in cache @
+      # /opt/hostedtoolcache/go/1.26.5/x64`, never asking whether a newer
+      # 1.26.x exists. That pins the toolchain to whatever GitHub last baked
+      # into the image, which the repository cannot see or influence.
+      #
+      # It made the vulnerability gate unable to pass. govulncheck failed
+      # v1.6.0 on two stdlib advisories, both fixed in 1.26.6, while every
+      # job kept selecting the cached 1.26.5 — so a re-run reported the same
+      # two findings, and would have until the image was rebuilt. A gate whose
+      # verdict is decided by what the environment left lying around is the
+      # same defect the lint cache had below, and costs about the same to fix.
+      #
+      # Set on every job rather than only the scan: the versions must agree,
+      # or the gate certifies a toolchain the build and the release archives
+      # did not use.
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          check-latest: true
 
       # Pinned, not `latest`: a v3 would move CI onto a config schema
       # `.mise.toml` does not track. No separate format step — v2 runs the
@@ -120,6 +138,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          check-latest: true
       - run: go install ./cmd/bv
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: bv --version
@@ -135,6 +154,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          check-latest: true
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: $(go env GOPATH)/bin/govulncheck ./...
 
@@ -158,6 +178,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          check-latest: true
 
       # -coverpkg credits a line whichever package's test reaches it: 89.5%
       # vs 90.8% here. `shell: bash` adds the pipefail the default lacks;

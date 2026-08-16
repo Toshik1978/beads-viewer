@@ -31,10 +31,16 @@ jobs:
           # `task check` needs `git ls-files`.
           fetch-depth: 0
 
+      # check-latest for the reason ci.yml gives at length, and it decides more
+      # here than anywhere: this is the job that compiles the published
+      # archives. Without it the runner image's cached patch release picks the
+      # stdlib every user downloads, and a Go security fix would reach them
+      # only when GitHub next rebuilt the image.
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          check-latest: true
 
       # install-only: `task check` runs the lint itself a step later.
       #

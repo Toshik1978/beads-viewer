@@ -57,5 +57,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          check-latest: true
 
       - run: go test ./internal/repocheck/
