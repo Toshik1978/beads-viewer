@@ -86,20 +86,23 @@ func (s *InternalSuite) TestTruncateLinesClampsEveryLineIndependently() {
 // directly, bypassing View()'s own clipping, which is what makes this test
 // able to tell the two apart.
 //
-// The fixture is a single 200-cell run with no spaces or hyphens, as an
-// assignee: measured directly, both wrapLine (render.go, word-boundary
-// wrapping) and glamour's own reflow give up on a run that long and emit it
-// on one unbroken line regardless of pane width — a markdown table was tried
-// first and turned out not to be discriminating, since this glamour version
+// The fixture is a single 200-cell run with no spaces or hyphens, as an id:
+// measured directly, both wrapLine (render.go, word-boundary wrapping) and
+// glamour's own reflow give up on a run that long and emit it on one
+// unbroken line regardless of pane width — a markdown table was tried first
+// and turned out not to be discriminating, since this glamour version
 // reflows table cells just fine down to very narrow widths. Only a run with
 // no breakpoint at all is guaranteed to still need truncateLines' backstop
 // after both of those wrapping layers have had their turn.
+//
+// It rode on a different field until br v1.6.0 removed it. The id is the
+// same metadata line and the same wrapLine call, so the measurement above
+// still describes what this fixture does.
 func (s *InternalSuite) TestRefreshContentTruncatesTheStoredViewportContent() {
 	const width = 20
 
 	issue := &beads.Issue{
-		ID: "bv-1", Title: "T", Status: beads.StatusOpen,
-		Assignee: strings.Repeat("y", 200),
+		ID: strings.Repeat("y", 200), Title: "T", Status: beads.StatusOpen,
 	}
 	m, err := New(slog.New(slog.DiscardHandler), theme.New(config.ThemeDark, theme.BackgroundDark))
 	s.Require().NoError(err)

@@ -54,14 +54,14 @@ func (s *detailTestSuite) TestRendersMetadata() {
 	issue := &beads.Issue{
 		ID: "bv-1", Title: "Add tree view", Status: beads.StatusInProgress,
 		Priority: beads.PriorityHigh, IssueType: beads.TypeFeature,
-		Assignee: "anton", Labels: []string{"ui", "tree"},
+		Labels:    []string{"ui", "tree"},
 		CreatedAt: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC),
 	}
 	m := s.newModel(60, 30)
 	m.SetIssue(issue, beads.NewSnapshot([]beads.Issue{*issue}))
 
 	out := m.View()
-	for _, want := range []string{"bv-1", "Add tree view", "In Progress", "P1", "anton", "ui", "tree"} {
+	for _, want := range []string{"bv-1", "Add tree view", "In Progress", "P1", "ui", "tree"} {
 		s.Contains(out, want)
 	}
 }

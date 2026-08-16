@@ -206,7 +206,7 @@ func (m *Model) CycleSwimLane() {
 }
 
 // ToggleExpand flips the board-wide card detail toggle: collapsed cards show
-// only the id, priority and title; expanded cards add assignee, labels and a
+// only the id, priority and title; expanded cards add a labels line and a
 // blocked-by or readiness line.
 func (m *Model) ToggleExpand() {
 	m.expanded = !m.expanded

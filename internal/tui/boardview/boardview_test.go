@@ -691,11 +691,11 @@ func sgrPrefix(s string) string {
 func (s *boardTestSuite) TestControlCharactersDoNotAddRenderedRows() {
 	dirty := beads.Issue{
 		ID: "a\nb\x1bc", Title: "title\x1bline\nmore", Status: beads.StatusOpen,
-		Assignee: "bob\nsmith\x1bx", Labels: []string{"x\x1by\nz"},
+		Labels: []string{"x\x1by\nz", "bob\nsmith\x1bx"},
 	}
 	clean := beads.Issue{
 		ID: "abc", Title: "titlelinemore", Status: beads.StatusOpen,
-		Assignee: "bobsmithx", Labels: []string{"xyz"},
+		Labels: []string{"xyz", "bobsmithx"},
 	}
 
 	dirtyModel := s.model([]beads.Issue{dirty}, 140, 30)
@@ -704,7 +704,7 @@ func (s *boardTestSuite) TestControlCharactersDoNotAddRenderedRows() {
 	cleanModel.ToggleExpand()
 
 	s.Equal(strings.Count(cleanModel.View(), "\n"), strings.Count(dirtyModel.View(), "\n"),
-		"control characters embedded in id/title/assignee/label must not add physical rows to the frame")
+		"control characters embedded in id/title/label must not add physical rows to the frame")
 }
 
 // boardKeyMsg builds the key press Update expects, mirroring

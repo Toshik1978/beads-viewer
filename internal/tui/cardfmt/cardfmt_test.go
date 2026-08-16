@@ -74,6 +74,49 @@ func (s *cardfmtTestSuite) TestNilSnapshotDoesNotPanic() {
 	s.NotPanics(func() { _ = cardfmt.Render(s.th(), nil, issue, 30, false, true) })
 }
 
+// TestExpandedCardRendersLabelsAlone pins the line br v1.6.0's field removal
+// left behind: the expanded card's first extra line is labels alone. The "@"
+// prefix is asserted absent rather than the field name, because "@" is what
+// a reader would recognise as the removed field's sigil on screen.
+func (s *cardfmtTestSuite) TestExpandedCardRendersLabelsAlone() {
+	issue := &beads.Issue{
+		ID: "bv-1", Title: "T", Status: beads.StatusOpen,
+		Labels: []string{"ui", "board"},
+	}
+	snap := beads.NewSnapshot([]beads.Issue{*issue})
+
+	out := ansi.Strip(cardfmt.Render(s.th(), snap, issue, 40, false, true))
+
+	s.Contains(out, "ui,board", "labels still render on the expanded card")
+	s.NotContains(out, "@", "no sigil for the removed field survives")
+}
+
+// TestExpandedCardFallsBackToEmDash keeps the placeholder's reason on record:
+// a card with nothing to show on that line must not render a blank row, which
+// reads as a rendering gap rather than "nothing to show here".
+func (s *cardfmtTestSuite) TestExpandedCardFallsBackToEmDash() {
+	issue := &beads.Issue{ID: "bv-1", Title: "T", Status: beads.StatusOpen}
+	snap := beads.NewSnapshot([]beads.Issue{*issue})
+
+	out := ansi.Strip(cardfmt.Render(s.th(), snap, issue, 40, false, true))
+
+	s.Contains(out, "—", "an issue with no labels still gets the em-dash placeholder")
+}
+
+// TestExpandedCardFallsBackToEmDashOnBlankLabel pins a hand-edited
+// `"labels":[""]` record: len(Labels) is 1, so the guard that only checks the
+// slice length would skip the placeholder and render a blank content row,
+// which is exactly what TestExpandedCardFallsBackToEmDash's own reasoning
+// says must not happen. The fallback has to key off the joined text instead.
+func (s *cardfmtTestSuite) TestExpandedCardFallsBackToEmDashOnBlankLabel() {
+	issue := &beads.Issue{ID: "bv-1", Title: "T", Status: beads.StatusOpen, Labels: []string{""}}
+	snap := beads.NewSnapshot([]beads.Issue{*issue})
+
+	out := ansi.Strip(cardfmt.Render(s.th(), snap, issue, 40, false, true))
+
+	s.Contains(out, "—", "a single blank label still gets the em-dash placeholder")
+}
+
 func (s *cardfmtTestSuite) th() theme.Theme {
 	return theme.New(config.ThemeDark, theme.BackgroundDark)
 }

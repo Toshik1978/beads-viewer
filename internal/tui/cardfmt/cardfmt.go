@@ -1,5 +1,5 @@
 // Package cardfmt renders one issue as a bordered card: the id-and-priority
-// line, the title, and — when expanded — assignee, labels and a blocked-by or
+// line, the title, and — when expanded — a labels line and a blocked-by or
 // readiness line.
 //
 // It exists for the same reason rowfmt does. The board and the dependency view
@@ -38,13 +38,13 @@ const cardBorderRows = 2
 // line and the title.
 const collapsedLines = 2
 
-// expandedExtraLines is what ToggleExpand adds: assignee/labels and a
+// expandedExtraLines is what ToggleExpand adds: the labels line and a
 // blocked-by or readiness line.
 const expandedExtraLines = 2
 
 // Render draws one card: a bordered box holding the id/priority line, the
-// title, and — when expanded — the assignee/labels and blocked-by lines. width
-// is the card's total width including its border.
+// title, and — when expanded — the labels and blocked-by lines. width is the
+// card's total width including its border.
 func Render(
 	th theme.Theme, snap *beads.Snapshot, issue *beads.Issue, width int, selected, expanded bool,
 ) string {
@@ -91,7 +91,7 @@ func contentLines(th theme.Theme, snap *beads.Snapshot, issue *beads.Issue, widt
 		return lines
 	}
 
-	return append(lines, assigneeLine(issue, width), blockedByLine(snap, issue, width))
+	return append(lines, labelsLine(issue, width), blockedByLine(snap, issue, width))
 }
 
 // headerLine renders the glyph, sanitised id and priority label, truncating
@@ -115,23 +115,20 @@ func headerLine(th theme.Theme, issue *beads.Issue, width int) string {
 	return uitext.Truncate(left+strings.Repeat(" ", gap)+priority, width)
 }
 
-// assigneeLine renders the sanitised assignee and labels, or an em dash
-// placeholder when neither is set — a blank row would otherwise read as a
-// rendering gap rather than "nothing to show here".
-func assigneeLine(issue *beads.Issue, width int) string {
-	var parts []string
-	if assignee := uitext.Sanitize(issue.Assignee); strings.TrimSpace(assignee) != "" {
-		parts = append(parts, "@"+assignee)
-	}
-	if len(issue.Labels) > 0 {
-		labels := make([]string, len(issue.Labels))
-		for i, l := range issue.Labels {
-			labels[i] = uitext.Sanitize(l)
-		}
-		parts = append(parts, strings.Join(labels, ","))
+// labelsLine renders the issue's sanitised labels, or an em dash placeholder
+// when it has none — a blank row would otherwise read as a rendering gap
+// rather than "nothing to show here".
+//
+// This line carried a second field too until br v1.6.0 removed it from the
+// record; the placeholder is what is left of the original reason it could be
+// empty, and it still applies to an unlabelled issue.
+func labelsLine(issue *beads.Issue, width int) string {
+	labels := make([]string, len(issue.Labels))
+	for i, l := range issue.Labels {
+		labels[i] = uitext.Sanitize(l)
 	}
 
-	text := strings.Join(parts, "  ")
+	text := strings.Join(labels, ",")
 	if text == "" {
 		text = "—"
 	}

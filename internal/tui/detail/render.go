@@ -53,8 +53,8 @@ func (m *Model) renderHeader() string {
 }
 
 // renderMeta renders the fixed metadata line: id, status, priority, type,
-// assignee, created, updated and closed, in that order, each field present
-// only when it has something to say.
+// created, updated and closed, in that order, each field present only when
+// it has something to say.
 //
 // Wrapped rather than truncated: at ordinary pane widths this line does not
 // fit on one row once every optional field is present, and truncateLines
@@ -67,9 +67,6 @@ func (m *Model) renderMeta() string {
 		uitext.Sanitize(issue.ID), issue.Status.Display(), issue.Priority.Label(), issue.IssueType.Display(),
 	}
 
-	if issue.Assignee != "" {
-		fields = append(fields, uitext.Sanitize(issue.Assignee))
-	}
 	if !issue.CreatedAt.IsZero() {
 		fields = append(fields, "created "+issue.CreatedAt.Format(dateFormat))
 	}
