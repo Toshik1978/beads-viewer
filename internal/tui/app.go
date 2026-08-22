@@ -128,6 +128,11 @@ func (m *Model) Init() tea.Cmd {
 // filter edit then swallows the key ahead of the active view; only then do
 // the global bindings and, finally, the active view get a look at it.
 //
+// A bracketed paste arrives as its own message rather than as a burst of key
+// presses, so it needs a case of its own beside tea.KeyPressMsg — without
+// one it fell through to the default branch and reached the active view
+// behind whatever overlay was open. See handlePaste (filter.go).
+//
 // This returns the concrete *Model rather than the tea.Model interface.
 // bubbletea v2.0.8's tea.Model.View returns tea.View (a struct), not the
 // string every test and the rest of this package deal in, so *Model does not
@@ -135,41 +140,30 @@ func (m *Model) Init() tea.Cmd {
 // regardless. cmd/bv's composition root (Task 3.5) wraps *Model in a thin
 // adapter whose View() calls tea.NewView(m.View()) to satisfy tea.Program.
 func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
+	if cmd, handled := m.handleInput(msg); handled {
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.applyLayout(msg.Width, msg.Height)
-
-		return m, nil
 	case SnapshotMsg:
 		m.applySnapshot(msg)
-
-		return m, nil
 	case ReloadRequestedMsg:
 		return m, m.reload
 	case clearStatusMsg:
 		if msg.token == m.status.token {
 			m.setStatus("", false)
 		}
-
-		return m, nil
 	case filterTickMsg:
 		m.applyBufferedFilter(msg.token)
-
-		return m, nil
 	case tea.BackgroundColorMsg:
 		m.applyDetectedBackground(msg)
-
-		return m, nil
-	case tea.KeyPressMsg:
-		cmd := m.handleKey(msg)
-		m.syncDetail()
-
-		return m, cmd
 	default:
-		cmd := m.views[m.active].Update(msg)
-
-		return m, cmd
+		return m, m.views[m.active].Update(msg)
 	}
+
+	return m, nil
 }
 
 // View renders the active pane and, when it has room, the detail pane beside
@@ -265,6 +259,30 @@ func (m *Model) SaveTreeState(beadsDir string) {
 		if err := tree.ExportState().Save(beadsDir); err != nil && m.log != nil {
 			m.log.Warn("save tree state", slog.String("dir", beadsDir), slog.Any("error", err))
 		}
+	}
+}
+
+// handleInput applies the two messages the user's own typing produces and
+// reports whether it consumed msg. It is split out of Update purely to stay
+// inside that function's complexity limit; the routing order is unchanged,
+// since no other case above matches either type.
+//
+// The two belong together because they are one event to the user: a paste is
+// typing, delivered as its own message only because bracketed paste wraps it.
+// Only the key branch resyncs the detail pane — a paste cannot move the
+// selection, and the filter it schedules resyncs through applyFilter when the
+// tick lands.
+func (m *Model) handleInput(msg tea.Msg) (tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		cmd := m.handleKey(msg)
+		m.syncDetail()
+
+		return cmd, true
+	case tea.PasteMsg:
+		return m.handlePaste(msg.Content), true
+	default:
+		return nil, false
 	}
 }
 

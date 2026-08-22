@@ -104,7 +104,7 @@ which is the point — the raise shows up in a diff instead of in nobody's
 memory. What stays here is the reasoning below, which is the half worth
 reading before raising one and the half no test can hold.
 
-- Non-test Go: at most **9,000 lines** total (raised seven times: from 6,000
+- Non-test Go: at most **9,200 lines** total (raised eight times: from 6,000
   to 6,300 during Task 7.1, for a correctness fix; from 6,300 to 6,800 for the
   six interface features under the border/focus/board epic; from 6,800 to
   6,900 for `bv-wkx`, the unplanned blockedness fix, at 162 lines; from 6,900
@@ -158,10 +158,23 @@ reading before raising one and the half no test can hold.
   fourth raise's lesson holding rather than being relearned — the alternative
   was to delete the reasoning that makes those decisions reviewable, which is
   the one thing this cap has never been worth. 167 lines of slack, which is
-  real. The structural limits below are the ones that actually detect the
+  real. Eighth, from 9,000 to 9,200, for the two interface fixes reported
+  against v1.6.0: the list view had no pager at all — j/k a row at a time or
+  home/end the whole way — and the filter overlay could only ever be typed
+  into, because bubbletea delivers a bracketed paste as its own message and
+  Update had no case for it. Together they landed at **8,998** against 9,000,
+  which is the fourth raise's warning arriving as a number: two lines is not
+  headroom, it is a cap that has stopped measuring. The 157 lines are the
+  list view's pager, a `uitext.TruncateLeft` the overlay needs so a pasted
+  string wider than the terminal cannot wrap the frame, `Model.handlePaste`,
+  and the argument for each — including why a paste drops control characters
+  rather than folding them into spaces, which is what makes the commonest
+  paste of all (an id copied out of a terminal with its trailing newline
+  attached) match anything. Compressing those explanations to land under
+  9,000 was the alternative, and it is the failure the fourth raise exists to
+  name. The structural limits below are the ones that actually detect the
   regression this cap is a proxy for, and they were satisfied with margin at
-  each
-  raise).
+  each raise).
 - `cmd/bv/main.go`: at most **150 lines**.
 - No non-test source file exceeds **500 lines**. Test files are governed
   instead by one file per suite — a test file that maps to exactly one

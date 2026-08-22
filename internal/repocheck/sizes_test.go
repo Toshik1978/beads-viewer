@@ -31,7 +31,7 @@ import (
 const (
 	maxFileLines  = 500
 	maxMainLines  = 150
-	maxTotalLines = 9000
+	maxTotalLines = 9200
 )
 
 // mainPath is the one file with a cap of its own.

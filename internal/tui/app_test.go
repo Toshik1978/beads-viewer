@@ -536,6 +536,99 @@ func (s *appTestSuite) TestAStaleTickAppliesNothing() {
 	s.Equal("be", m.FilterForTest().Text)
 }
 
+// TestPastedTextReachesTheFilterBuffer pins the fix for a filter box that
+// could only be typed into. bubbletea enables bracketed paste by default, so
+// a terminal paste arrives as one tea.PasteMsg rather than as a burst of
+// tea.KeyPressMsg — and Update's key routing, which is what the overlay
+// swallows keys through, never saw it. The paste was forwarded to the active
+// view behind the open overlay and silently dropped, which is both the
+// missing feature and a leak of the "the overlay consumes every key"
+// contract handleFilterKey exists to keep.
+func (s *appTestSuite) TestPastedTextReachesTheFilterBuffer() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+
+	_, cmd := m.Update(tea.PasteMsg{Content: "alpha"})
+
+	s.Contains(ansi.Strip(m.View()), "filter: alpha", "the pasted text must reach the filter buffer")
+	s.Require().NotNil(cmd, "a paste must schedule the same debounced apply typing does")
+	m.Update(cmd())
+	s.Equal("alpha", m.FilterForTest().Text, "the scheduled tick must apply the pasted text")
+}
+
+// TestPasteAppendsAtTheCursorRatherThanReplacing pins that a paste extends
+// what is already in the box, exactly as typing the same characters would.
+func (s *appTestSuite) TestPasteAppendsAtTheCursorRatherThanReplacing() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+
+	m.Update(tea.PasteMsg{Content: "lpha"})
+
+	s.Contains(ansi.Strip(m.View()), "filter: alpha")
+}
+
+// TestPastedControlCharactersAreDropped covers the commonest real paste of
+// all: an id copied out of a terminal, which carries the trailing newline
+// with it. Dropping control characters rather than replacing them with
+// spaces is what makes "bv-1\n" match — beads.Filter trims the query but
+// would still have to match a space in the middle of one.
+//
+// The line count is asserted too, because the overlay is a single row of the
+// frame's height budget: a surviving newline would render as a second
+// physical line and push the status bar off the bottom.
+func (s *appTestSuite) TestPastedControlCharactersAreDropped() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	before := len(strings.Split(m.View(), "\n"))
+
+	_, cmd := m.Update(tea.PasteMsg{Content: "bv-1\n"})
+
+	s.Contains(ansi.Strip(m.View()), "filter: bv-1")
+	s.Len(strings.Split(m.View(), "\n"), before, "a pasted newline must not add a row to the frame")
+	s.Require().NotNil(cmd)
+	m.Update(cmd())
+	s.Equal("bv-1", m.FilterForTest().Text)
+}
+
+// TestAnOverlongFilterLineIsTruncatedToTheWidth guards the layout against
+// what paste makes reachable in one keystroke: overlayLine renders
+// "filter: " plus the whole buffer, and a buffer wider than the terminal
+// wraps, growing the frame by a row and corrupting everything below it. The
+// tail is what stays visible, since that is where the next character lands.
+func (s *appTestSuite) TestAnOverlongFilterLineIsTruncatedToTheWidth() {
+	const width = 40
+
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+
+	m.Update(tea.PasteMsg{Content: strings.Repeat("a", 100) + "TAIL"})
+
+	for line := range strings.SplitSeq(m.View(), "\n") {
+		s.LessOrEqual(lipgloss.Width(line), width, "line: %q", ansi.Strip(line))
+	}
+	s.Contains(ansi.Strip(m.View()), "TAIL", "the end of the buffer is what must stay visible")
+}
+
+// TestPasteOutsideTheFilterOverlayIsInert pins that the new routing is scoped
+// to the one place that edits text. Nothing else in bv accepts input, so a
+// paste anywhere else must leave the frame exactly as it was.
+func (s *appTestSuite) TestPasteOutsideTheFilterOverlayIsInert() {
+	m := s.newModel(s.twoIssues())
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	before := m.View()
+
+	_, cmd := m.Update(tea.PasteMsg{Content: "alpha"})
+
+	s.Nil(cmd)
+	s.Equal(before, m.View())
+	s.Empty(m.FilterForTest().Text)
+}
+
 func (s *appTestSuite) TestEnterStillCommitsAndClosesTheOverlay() {
 	m := s.newModel(s.twoIssues())
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})

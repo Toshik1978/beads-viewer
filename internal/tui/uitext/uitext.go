@@ -41,6 +41,40 @@ func Truncate(s string, width int) string {
 	return ansi.Truncate(s, width, ellipsis)
 }
 
+// TruncateLeft shortens s to at most width terminal cells by cutting from
+// the head rather than the tail, marking the cut with the same ellipsis.
+//
+// It is Truncate's mirror, for the one place where the end of a string is
+// the part worth keeping: a text buffer being edited, where the tail is
+// where the next character lands. A row label or a title is the other way
+// round — its head is what identifies it — which is why both exist.
+func TruncateLeft(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	cells := ansi.StringWidth(s)
+	if cells <= width {
+		return s
+	}
+
+	// One cell of the budget goes to the ellipsis itself, so the cut has to
+	// be that much deeper than the raw overflow.
+	cut := cells - width + 1
+	out := ansi.TruncateLeft(s, cut, ellipsis)
+
+	// ansi.TruncateLeft drops whole graphemes, so a cut landing inside a
+	// two-cell glyph keeps that glyph and overshoots the budget by exactly
+	// the part that did not fit. Deepening the cut by the overshoot moves the
+	// boundary to that glyph'"'"'s own end, so one correction always lands — and
+	// can only leave the result narrower than asked, never wider.
+	if over := ansi.StringWidth(out) - width; over > 0 {
+		out = ansi.TruncateLeft(s, cut+over, ellipsis)
+	}
+
+	return out
+}
+
 // Sanitize drops control characters (runes below 0x20, plus 0x7f/DEL) from s.
 //
 // bv renders rather than validates hand-edited and br-rejected JSONL, so a

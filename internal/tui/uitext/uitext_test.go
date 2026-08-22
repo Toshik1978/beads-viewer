@@ -1,6 +1,8 @@
 package uitext_test
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,8 +20,48 @@ import (
 // coverage before the move (only indirect, through listview's delegate), so
 // it gets its own suite below.
 func TestUitext(t *testing.T) {
+	suite.Run(t, new(truncateLeftTestSuite))
 	suite.Run(t, new(sanitizeTestSuite))
 	suite.Run(t, new(relativeAgeTestSuite))
+}
+
+type truncateLeftTestSuite struct {
+	suite.Suite
+}
+
+// TestKeepsTheTail is the whole point of a left-hand truncation: the filter
+// overlay renders a text buffer whose end is where the next character lands,
+// so the head is what must go when it no longer fits.
+func (s *truncateLeftTestSuite) TestKeepsTheTail() {
+	got := uitext.TruncateLeft("abcdefghij", 5)
+
+	s.Equal(5, ansi.StringWidth(got), "the result must fill the width it was given")
+	s.True(strings.HasSuffix(got, "hij"), "the tail must survive; got %q", got)
+	s.True(strings.HasPrefix(got, "…"), "a cut string must be marked as cut; got %q", got)
+}
+
+func (s *truncateLeftTestSuite) TestLeavesAFittingStringAlone() {
+	s.Equal("abc", uitext.TruncateLeft("abc", 3))
+	s.Equal("abc", uitext.TruncateLeft("abc", 10))
+}
+
+func (s *truncateLeftTestSuite) TestRejectsNonPositiveWidths() {
+	for _, width := range []int{0, -1} {
+		s.Run(strconv.Itoa(width), func() {
+			s.Empty(uitext.TruncateLeft("hello", width))
+		})
+	}
+}
+
+// TestNeverSplitsAGrapheme mirrors Truncate's own guard from the other end:
+// a two-cell glyph cut in half emits a replacement character and shifts the
+// row it sits on.
+func (s *truncateLeftTestSuite) TestNeverSplitsAGrapheme() {
+	got := uitext.TruncateLeft("日本語", 4) //nolint:gosmopolitan // exercising CJK width, not locale text
+
+	s.NotEmpty(got)
+	s.NotContains(got, "\ufffd")
+	s.LessOrEqual(ansi.StringWidth(got), 4)
 }
 
 type sanitizeTestSuite struct {

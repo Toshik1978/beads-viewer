@@ -180,17 +180,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	return m.views[m.active].Update(msg)
 }
 
-// overlayLine renders the single-line filter-edit overlay. The help overlay
-// is multi-line and handled separately by Model.helpOverlay, which replaces
-// the body outright instead of sharing this one-row budget.
-func (m *Model) overlayLine() string {
-	if m.overlay.kind != overlayFilter {
-		return ""
-	}
-
-	return m.theme.Accent.Render("filter: " + m.overlay.buffer)
-}
-
 // handleGlobalKey applies the keys that are meaningful regardless of which
 // view is active and reports whether it consumed the key press. app.go only
 // falls through to the active view when this returns false. It is split in
