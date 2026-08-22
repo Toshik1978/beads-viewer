@@ -9,6 +9,70 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.7.0 — 2026-08-22
+
+Two things you could not do, in the two places you spend the most time. A long
+list had no middle gear: `j` and `k` moved one row, `home` and `end` moved the
+whole way, and nothing moved a screen. And the filter box could only be typed
+into — a paste put nothing in it at all, so an id you had just copied had to be
+retyped from memory.
+
+**One key pair is added and nothing is reassigned.** `ctrl+b` and `ctrl+f` now
+page the list, exactly as they already paged the tree. `pgup` and `pgdown`
+still scroll the detail pane, every other binding is where it was, and what
+the filter matches is unchanged.
+
+### The list view gets a pager
+
+- `ctrl+f` moves the cursor down one screenful and `ctrl+b` moves it back up,
+  each stopping at the last or first row rather than wrapping. A screenful is
+  however many rows the pane is showing at the time, so the step follows the
+  terminal when you resize it.
+- The keys are the tree view's, which has paged this way all along. There is
+  now one paging spelling across the two views that have a pager, rather than
+  one view with it and one without.
+- They are not `pgup` and `pgdown` because those are the detail pane's scroll
+  keys, and have been since the pane existed. Binding them here would have
+  taken a working key away in order to add a missing one.
+- The board and dependency views are unchanged. Neither had a pager and
+  neither gained one; their columns are short enough that `home` and `end`
+  reach the ends of one in a press.
+
+### The filter box accepts a paste
+
+- Open it with `/` and paste: the text is entered at the cursor exactly as
+  typing it would be, and applies as it lands, through the same 150ms debounce
+  a burst of typing already used. `enter` still commits and `esc` still
+  restores the filter you had before the box opened.
+- Nothing had been reading the paste. A terminal delivers one through
+  bracketed paste — a single event carrying the whole string, not a run of
+  keystrokes — and `bv` had no case for it, so the characters went nowhere.
+  On a terminal that does not support bracketed paste the characters arrived
+  individually and always worked; this closes the case that applies to
+  practically every terminal in use.
+- Control characters are dropped rather than folded into spaces, which is what
+  makes the commonest paste of all land correctly: an id copied out of a
+  terminal comes with a trailing newline, and `bv-123` followed by one now
+  searches for `bv-123`.
+- A pasted string wider than the terminal no longer wraps the box and pushes
+  the status bar off the bottom of the frame. The line is clipped from its
+  head, so the end of what you pasted — where the next character will go — is
+  the part that stays on screen.
+- Use whatever your terminal or multiplexer binds to paste: ⌘V,
+  ctrl+shift+V, a middle click, a paste-buffer key. `bv` binds no paste key of
+  its own and still never reads a clipboard directly; `y` writes an id to
+  yours over OSC52, and the terminal is what hands it back.
+
+### Features
+
+- feat(listview): page the list with ctrl+b and ctrl+f ([b4b3bb9](https://github.com/Toshik1978/beads-viewer/commit/b4b3bb9449fcc7950fda0cba1aeb24e36e6f45d8))
+
+### Bug Fixes
+
+- fix(filter): accept a bracketed paste in the filter overlay ([1788c2d](https://github.com/Toshik1978/beads-viewer/commit/1788c2d7c88a2b141b609b1ef1cd74fd728d4ff2))
+
+---
+
 ## v1.6.0 — 2026-08-16
 
 `br` v1.6.0 removed fifteen never-populated fields from its issue record.
