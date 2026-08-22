@@ -339,6 +339,53 @@ func (s *listViewTestSuite) TestPagingLettersAreDisabledInTheListView() {
 	s.Equal(beforeSelection, m.SelectedID(), "none of the disabled paging keys may move the cursor")
 }
 
+// TestCtrlFPagesDownAndCtrlBPagesBack pins the list view's own pager. The
+// keys are ctrl+b/ctrl+f rather than pgup/pgdown for the reason treeview's
+// nav.go already records: tui/keys.go routes those two spellings to the
+// detail pane whenever it is on screen, so a list-side binding on them would
+// be dead code. Before this, the list had no pager at all — j/k a row at a
+// time, or home/end the whole way — because listview.New unbinds bubbles'
+// own PrevPage/NextPage and nothing replaced them.
+//
+// A page is a screenful of rows, so at height 10 one ctrl+f moves ten rows.
+func (s *listViewTestSuite) TestCtrlFPagesDownAndCtrlBPagesBack() {
+	m := s.newModel(s.manyIssues(50), 60, 10)
+	s.Require().Equal("bv-000", m.SelectedID())
+
+	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	s.Equal("bv-010", m.SelectedID(), "ctrl+f must move the cursor down one full page")
+
+	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	s.Equal("bv-000", m.SelectedID(), "ctrl+b must move it back up the same page")
+}
+
+// TestPagingClampsAtBothEnds pins that the pager stops rather than wraps or
+// runs off the end, the same contract treeview's setCursor gives.
+func (s *listViewTestSuite) TestPagingClampsAtBothEnds() {
+	m := s.newModel(s.manyIssues(50), 60, 10)
+
+	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	s.Equal("bv-000", m.SelectedID(), "up from the first page must not wrap to the last")
+
+	for range 10 {
+		m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	}
+	s.Equal("bv-049", m.SelectedID(), "down past the last row must stop on it, not wrap")
+}
+
+// TestPagingAnEmptyListDoesNotPanic covers the branch a list with no items
+// takes: there is no row to land on, and the arithmetic must not reach for
+// one anyway.
+func (s *listViewTestSuite) TestPagingAnEmptyListDoesNotPanic() {
+	m := s.newModel(nil, 60, 10)
+
+	s.NotPanics(func() {
+		m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+		m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	})
+	s.Empty(m.SelectedID())
+}
+
 // keyCode maps a key spelling to the tea.KeyPressMsg.Code a real keypress
 // would carry: single-rune keys arrive as the rune itself, named keys as
 // their own tea.Key* constant. tea.KeyPressMsg.String() (what key.Matches

@@ -128,8 +128,8 @@ rather than shipping.
 | `s` | cycle swimlane grouping (board: status, priority, type) |
 | `pgup` / `ctrl+u` | scroll the detail pane up |
 | `pgdown` / `ctrl+d` | scroll the detail pane down |
-| `ctrl+b` | page up (tree) |
-| `ctrl+f` | page down (tree) |
+| `ctrl+b` | page up (list/tree) |
+| `ctrl+f` | page down (list/tree) |
 
 While the filter box is open, every key edits the filter text and the view
 narrows as you type, roughly a sixth of a second after you stop. `Enter`

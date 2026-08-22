@@ -6,6 +6,9 @@
 package listview
 
 import (
+	"maps"
+	"slices"
+
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 
@@ -103,14 +106,30 @@ func (m *Model) SetSnapshot(snap *beads.Snapshot) {
 	}
 }
 
-// Update routes a message to the underlying list. list.Model.Update takes a
-// value receiver, so the result is reassigned rather than mutated in place.
+// Update applies this package's own bindings first, then routes anything they
+// do not claim to the underlying list. list.Model.Update takes a value
+// receiver, so the result is reassigned rather than mutated in place.
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
+	if press, ok := msg.(tea.KeyPressMsg); ok {
+		if action, ok := keyActions(m)[press.String()]; ok {
+			action()
+
+			return nil
+		}
+	}
+
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
 
 	return cmd
 }
+
+// PageUp moves the cursor up by one screenful of rows, stopping at the top.
+func (m *Model) PageUp() { m.pageBy(-1) }
+
+// PageDown moves the cursor down by one screenful of rows, stopping at the
+// bottom.
+func (m *Model) PageDown() { m.pageBy(1) }
 
 // View renders the list.
 //
@@ -161,4 +180,41 @@ func (m *Model) SelectedID() string {
 	}
 
 	return ""
+}
+
+// pageBy moves the cursor one screenful in direction, clamped to the rows
+// that exist.
+//
+// It goes through list.Select rather than the paginator's own PrevPage/
+// NextPage, which the New above unbinds: those move the page while leaving
+// the cursor's offset within it alone, so on a short final page that offset
+// can point past the last row, and paging back would not return to where
+// paging forward started. Selecting an absolute index has neither problem
+// and matches treeview's setCursor, the clamp bv's other pager already gives.
+func (m *Model) pageBy(direction int) {
+	count := len(m.list.Items())
+	if count == 0 {
+		return
+	}
+
+	step := max(m.list.Paginator.PerPage, 1)
+	m.list.Select(min(max(m.list.Index()+direction*step, 0), count-1))
+}
+
+// HelpKeys returns every key keyActions binds, checked against helpGroups by internal/tui/help_test.go.
+func HelpKeys() []string {
+	return slices.Collect(maps.Keys(keyActions(&Model{})))
+}
+
+// keyActions maps a key's textual representation to the method it triggers,
+// mirroring treeview's and boardview's own tables — including their reason
+// for spelling paging ctrl+b/ctrl+f: tui/keys.go routes pgup and pgdown to
+// the detail pane whenever it is on screen, so a binding on those two here
+// would be dead code. Built fresh per keypress for the reason treeview's own
+// keyActions records: gochecknoglobals rules out a package-level table.
+func keyActions(m *Model) map[string]func() {
+	return map[string]func(){
+		"ctrl+b": m.PageUp,
+		"ctrl+f": m.PageDown,
+	}
 }

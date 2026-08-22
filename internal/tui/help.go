@@ -76,14 +76,15 @@ func renderHelpBody(keys KeyMap, th theme.Theme, width, height int, note string)
 }
 
 // helpGroups is the overlay's single source of truth for which keys exist.
-// The tree-, board- and deps-only bindings below are not KeyMap fields (that
+// The bindings below that belong to particular views are not KeyMap fields (that
 // would push its 16 past the 20-field struct cap); they are declared here
 // instead, mirroring the literal key strings treeview/nav.go's, boardview.go's
 // and depsview/nav.go's own keyActions maps use — a deliberate duplication,
 // since keyActions maps a key to a bound method value, not a label.
-// treeview.HelpKeys, boardview.HelpKeys and depsview.HelpKeys are what guard
-// it: help_test.go asserts every key they report is named here, so drift now
-// fails a test instead of shipping silently.
+// listview.HelpKeys, treeview.HelpKeys, boardview.HelpKeys and
+// depsview.HelpKeys are what guard it: help_test.go asserts every key they
+// report is named here, so drift now fails a test instead of shipping
+// silently.
 //
 // Filtering folded into Global here (bv-7pt.6.1): with a fourth view's two
 // bindings added to Views, keeping Filtering as its own column pushed the
@@ -112,8 +113,8 @@ func helpGroups(keys KeyMap) []helpGroup {
 			key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "collapse all (tree)")),
 			key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle swimlane (board)")),
 			keys.ScrollUp, keys.ScrollDown,
-			key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "page up (tree)")),
-			key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "page down (tree)")),
+			key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "page up (list/tree)")),
+			key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "page down (list/tree)")),
 		}},
 	}
 }

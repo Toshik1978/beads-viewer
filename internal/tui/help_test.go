@@ -15,6 +15,7 @@ import (
 	"github.com/Toshik1978/beads-viewer/internal/tui"
 	"github.com/Toshik1978/beads-viewer/internal/tui/boardview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/depsview"
+	"github.com/Toshik1978/beads-viewer/internal/tui/listview"
 	"github.com/Toshik1978/beads-viewer/internal/tui/theme"
 	"github.com/Toshik1978/beads-viewer/internal/tui/treeview"
 )
@@ -36,7 +37,7 @@ func (s *helpTestSuite) TestFitsIn80x24() {
 func (s *helpTestSuite) TestDocumentsEveryBoundKey() {
 	// A key that works but is undocumented is a key nobody finds. Boundary-
 	// aware keyIsDocumented, not a plain Contains, is required here for the
-	// same reason TestDocumentsTreeAndBoardKeys' own comment explains: a
+	// same reason TestDocumentsEveryViewPackageKey's own comment explains: a
 	// bare Contains(out, "1") or Contains(out, "y") is satisfied by any
 	// digit anywhere in the overlay, or by "y" as a substring of "key
 	// bindings", regardless of whether that key is actually bound.
@@ -107,13 +108,13 @@ func (s *helpTestSuite) TestFitsAtTheHeightsHelpOverlayActuallyPasses() {
 	}
 }
 
-// TestDocumentsTreeBoardAndDepsKeys is I8's drift guard: helpGroups (help.go)
-// keeps its own literal copy of treeview's, boardview's and depsview's key
-// bindings rather than importing keyActions directly (see that function's own
-// comment on why), which means nothing caught it automatically if one of
-// those packages added or renamed a key without updating this table. All
-// three packages' HelpKeys expose exactly the strings their real keyActions
-// binds, so this closes that gap: a key present there and absent here now
+// TestDocumentsEveryViewPackageKey is I8's drift guard: helpGroups (help.go)
+// keeps its own literal copy of listview's, treeview's, boardview's and
+// depsview's key bindings rather than importing keyActions directly (see
+// that function's own comment on why), which means nothing caught it
+// automatically if one of those packages added or renamed a key without
+// updating this table. All four packages' HelpKeys expose exactly the
+// strings their real keyActions binds, so this closes that gap: a key present there and absent here now
 // fails a test instead of shipping an overlay that omits it.
 //
 // A plain Contains(out, k) is not enough for a single-character key: "c" is
@@ -127,11 +128,14 @@ func (s *helpTestSuite) TestFitsAtTheHeightsHelpOverlayActuallyPasses() {
 // match — which a second draft, checking only k+"  ", also failed: "p" is
 // still a bare substring of "up/k", so a left boundary is needed too, not
 // only a right one.
-func (s *helpTestSuite) TestDocumentsTreeBoardAndDepsKeys() {
+func (s *helpTestSuite) TestDocumentsEveryViewPackageKey() {
 	out := ansi.Strip(
 		tui.RenderHelpForTest(tui.DefaultKeyMap(), theme.New(config.ThemeDark, theme.BackgroundDark), 100, 40),
 	)
 
+	for _, k := range listview.HelpKeys() {
+		s.True(keyIsDocumented(out, k), "listview key %q is bound but undocumented", k)
+	}
 	for _, k := range treeview.HelpKeys() {
 		s.True(keyIsDocumented(out, k), "treeview key %q is bound but undocumented", k)
 	}
@@ -168,7 +172,7 @@ func (s *helpTestSuite) TestReadmeDocumentsExactlyTheBoundKeys() {
 			bound[k] = true
 		}
 	}
-	for _, k := range slices.Concat(treeview.HelpKeys(), boardview.HelpKeys()) {
+	for _, k := range slices.Concat(listview.HelpKeys(), treeview.HelpKeys(), boardview.HelpKeys()) {
 		bound[k] = true
 	}
 
