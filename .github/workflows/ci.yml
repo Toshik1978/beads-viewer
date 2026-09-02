@@ -66,9 +66,16 @@ jobs:
           cache: true
           check-latest: true
 
-      # Pinned, not `latest`: a v3 would move CI onto a config schema
-      # `.mise.toml` does not track. No separate format step — v2 runs the
-      # formatters as part of `run`.
+      # `latest`, matching `.mise.toml`. This comment used to argue the
+      # opposite — pinned, because a v3 would move CI onto a config schema
+      # `.mise.toml` does not track — and the premise was that `.mise.toml`
+      # held still. It never did: its own `golangci-lint = "2"` floated to
+      # whatever 2.x was newest, so the two pins could only drift apart, and
+      # when 2.13 deprecated a gofumpt setting the local gate went red against
+      # a green CI on code neither had touched. Floating both is what makes
+      # them agree; a v3 now lands on the developer's machine first, which is
+      # where a schema change should be found. No separate format step — v2
+      # runs the formatters as part of `run`.
       #
       # skip-cache, at roughly 20s a job: a restored analysis cache made
       # `nolintlint` fire on directives that are load-bearing. revive's
@@ -84,7 +91,7 @@ jobs:
       # build nobody can reproduce.
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: latest
           args: --timeout=5m
           skip-cache: true
 

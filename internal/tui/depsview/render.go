@@ -126,7 +126,8 @@ func (m *Model) headingLine(col Column, width int, focused bool) string {
 	}
 
 	return style.Width(width).Render(
-		uitext.Truncate(fmt.Sprintf("%s (%d)", col.Title, len(col.Entries)), width))
+		uitext.Truncate(fmt.Sprintf("%s (%d)", col.Title, len(col.Entries)), width),
+	)
 }
 
 // renderEntry draws one card. A dangling blocker has no issue behind it, so
@@ -140,7 +141,8 @@ func (m *Model) renderEntry(e Entry, width int, selected bool) string {
 		}
 
 		return style.Width(width).Render(
-			uitext.Truncate(uitext.Sanitize(e.ID)+" — "+string(e.Relation), width))
+			uitext.Truncate(uitext.Sanitize(e.ID)+" — "+string(e.Relation), width),
+		)
 	}
 
 	card := cardfmt.Render(m.theme, m.snapshot, e.Issue, width, selected, false)

@@ -1,6 +1,12 @@
 # Toolchain and release tooling, pinned so builds and releases are reproducible.
+#
+# golangci-lint is the exception, and floats on purpose. A major-version pin
+# here still resolved to whatever 2.x was newest, so it was never reproducible
+# — it only looked it, and the day it moved to 2.13 it disagreed with the
+# workflows' own pin and the gate went red locally while CI stayed green.
+# `latest` on both sides removes the disagreement rather than the movement.
 [tools]
 go = "1.26"
-golangci-lint = "2"
+golangci-lint = "latest"
 goreleaser = "2"
 git-cliff = "2"

@@ -38,7 +38,8 @@ func requireTerminal(stdin *os.File) error {
 	if info.Mode()&os.ModeCharDevice == 0 {
 		return errors.New(
 			"stdin is not a terminal — bv is an interactive viewer and cannot run " +
-				"from a pipe, a file or a job without a terminal attached")
+				"from a pipe, a file or a job without a terminal attached",
+		)
 	}
 
 	return nil

@@ -29,12 +29,15 @@ still genuinely useful even when they go unanswered for a while.
   `Taskfile.yml`.
 - **[pre-commit](https://pre-commit.com)** — the hooks in
   `.pre-commit-config.yaml`.
-- **[golangci-lint](https://golangci-lint.run) v2.x.** `.mise.toml` pins the
-  major, so `mise install` (or `task setup`) gets you a current 2.x; CI pins
-  `v2.12.2` exactly, because a v3 would read a different config schema. The
-  two are not identical, so a new check in a later 2.x can fire locally and
-  not in CI, or the reverse. If a lint result surprises you, compare
-  `golangci-lint --version` against the pin in `.github/workflows/ci.yml`.
+- **[golangci-lint](https://golangci-lint.run).** `.mise.toml` and both
+  workflows all track the latest release, so `mise install` (or `task setup`)
+  gets you the same version CI runs. They used to differ — the major pin here
+  against an exact `v2.12.2` there — and the warning this bullet carried then
+  came true: 2.13 deprecated a gofumpt setting and widened its meaning, and
+  the gate went red locally against a green CI on code neither had touched.
+  Floating both is what keeps them equal. The cost is that a golangci-lint
+  release can now turn the gate red without a commit; you will meet it
+  locally first, which is the point.
 - **[git-cliff](https://git-cliff.org)** and
   **[GoReleaser](https://goreleaser.com)** — only to cut a release. Both are
   pinned in `.mise.toml` too.

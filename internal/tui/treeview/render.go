@@ -161,7 +161,8 @@ func (m *Model) renderRow(node *Node, ancestors []bool, isLast, selected bool, w
 	if len(ancestors) != node.Depth {
 		panic(fmt.Sprintf(
 			"treeview: node %s at depth %d rendered with %d ancestors",
-			node.Issue.ID, node.Depth, len(ancestors)))
+			node.Issue.ID, node.Depth, len(ancestors),
+		))
 	}
 
 	prefix := Prefix(ancestors, isLast, len(node.Children) > 0, node.Expanded)
@@ -224,7 +225,8 @@ func (m *Model) columns(issue *beads.Issue, remaining int) rowfmt.Columns {
 	// backstop.
 	narrowest := rowfmt.Columns{Glyph: full.Glyph, Priority: full.Priority}
 	narrowest.Title = uitext.Truncate(
-		uitext.Sanitize(issue.Title), max(remaining-fixedWidth(narrowest), 0))
+		uitext.Sanitize(issue.Title), max(remaining-fixedWidth(narrowest), 0),
+	)
 
 	return narrowest
 }

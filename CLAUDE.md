@@ -205,8 +205,10 @@ state belongs in a view package, not on `Model`.
 ## Code style
 
 This repository's `.golangci.yml` is the shared lint gate, unmodified except
-for the `gci` and `gofumpt` module prefix. Consequences worth knowing before
-writing code against it:
+for the `gci` and `gofumpt` module prefix and gofumpt's three extra rules,
+which are named one by one rather than switched on with `extra-rules: true` —
+that flag is deprecated, and its meaning widened under this config once
+already. Consequences worth knowing before writing code against it:
 
 - `gochecknoglobals` / `gochecknoinits`: no package-level `var`, no `init()`.
   Construct and inject instead.
@@ -221,7 +223,10 @@ writing code against it:
   fine.
 - `sloglint`: `no-global: all`, lowercased messages, snake_case keys.
 - `godot`: comments end with a period.
-- Formatters: `gofumpt`, `gci` (sections: standard, default,
+- Formatters: `gofumpt` with every extra rule on — `group-params`,
+  `clothe-returns` and `balance-calls`, the last of which puts the closing
+  paren of a call split across lines on its own line, after a trailing comma
+  — `gci` (sections: standard, default,
   `prefix(github.com/Toshik1978/beads-viewer)`), `golines` at 120 columns.
 
 Write comments that explain *why*, not what the code already says.

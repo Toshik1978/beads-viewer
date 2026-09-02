@@ -123,7 +123,8 @@ func searchUpwards() (Workspace, error) {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return Workspace{}, fmt.Errorf(
-				"%w at or above %s — run 'br init' first", ErrNoWorkspace, start)
+				"%w at or above %s — run 'br init' first", ErrNoWorkspace, start,
+			)
 		}
 
 		dir = parent

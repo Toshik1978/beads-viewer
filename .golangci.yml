@@ -236,7 +236,16 @@ formatters:
         - prefix(github.com/Toshik1978/beads-viewer)
     gofumpt:
       module-path: github.com/Toshik1978/beads-viewer
-      extra-rules: true
+      # Named individually, not `extra-rules: true`. That flag is deprecated
+      # in golangci-lint 2.13, and its meaning widened underneath this config
+      # on the way there: it used to mean group-params alone, and now enables
+      # every extra rule gofumpt has — which is how balance-calls arrived
+      # unannounced and turned five untouched files red. A key that lists
+      # what it wants cannot silently acquire a fourth rule the same way.
+      extra:
+        group-params: true
+        clothe-returns: true
+        balance-calls: true
     golines:
       max-len: 120
       shorten-comments: true

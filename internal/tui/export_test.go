@@ -31,13 +31,14 @@ func RenderHelpForTest(keys KeyMap, th theme.Theme, width, height int) string {
 // asserting it, so help_test.go stayed green regardless. Reading k's fields
 // directly is independent of helpGroups, so a binding missing from the
 // overlay is missing from only one side of the comparison and the guard
-// actually catches it. v.Fields() (not NumField/Field(i)) is what
+// actually catches it. v.Fields() (not NumField/Field(i)) and
+// reflect.TypeAssert (not Interface() plus a type assertion) are what
 // golangci-lint's modernize check wants for this walk.
 func (k KeyMap) All() []key.Binding {
 	v := reflect.ValueOf(k)
 	all := make([]key.Binding, 0, v.NumField())
 	for _, field := range v.Fields() {
-		if b, ok := field.Interface().(key.Binding); ok {
+		if b, ok := reflect.TypeAssert[key.Binding](field); ok {
 			all = append(all, b)
 		}
 	}

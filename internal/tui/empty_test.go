@@ -124,7 +124,8 @@ func (s *emptyTestSuite) TestLoadErrorWithNoErrTextStillSaysSomethingTrue() {
 func (s *emptyTestSuite) TestLoadErrorDoesNotRunIntoTheHint() {
 	th := theme.New(config.ThemeDark, theme.BackgroundDark)
 	out := ansi.Strip(tui.RenderEmptyForTest(
-		tui.EmptyLoadError, beads.Filter{}, "decode: unexpected end of value", th, 100, 24))
+		tui.EmptyLoadError, beads.Filter{}, "decode: unexpected end of value", th, 100, 24,
+	))
 
 	s.NotContains(out, "valueNothing", "the error text must not run directly into the hint")
 	s.Regexp(`value\s+Nothing has loaded yet`, out,
