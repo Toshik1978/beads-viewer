@@ -118,6 +118,60 @@ func (s *detailTestSuite) TestOmitsEmptySections() {
 	s.NotContains(out, "Notes")
 }
 
+// A close reason is prose, not a scalar. br renders it as a section beside
+// Design and Notes precisely because a reason written with
+// `br close --reason-file` spans paragraphs, and a scalar row escapes the
+// newlines into a literal "\n". This pane must lay it out, not escape it.
+//
+// ClosedAt is deliberately nil: br gates the section on the reason being
+// non-empty and nothing else, so a reason surviving on a reopened issue is
+// still shown. bv renders rather than validates.
+func (s *detailTestSuite) TestRendersCloseReasonAsProse() {
+	issue := &beads.Issue{
+		ID: "bv-1", Title: "T",
+		Notes:       "a note",
+		CloseReason: "First paragraph.\n\nSecond paragraph.",
+	}
+	m := s.newModel(70, 40)
+	m.SetIssue(issue, beads.NewSnapshot([]beads.Issue{*issue}))
+
+	out := ansi.Strip(m.View())
+	s.Contains(out, "Close Reason")
+	s.Contains(out, "First paragraph.")
+	s.Contains(out, "Second paragraph.")
+	s.NotContains(out, `\n`, "the reason was escaped rather than laid out")
+	s.Less(
+		strings.Index(out, "Notes"), strings.Index(out, "Close Reason"),
+		"br shows the close reason last, after Notes; both renderings should agree on where to look",
+	)
+
+	first, second := lineOf(out, "First paragraph."), lineOf(out, "Second paragraph.")
+	s.Less(first, second, "the two paragraphs must occupy different lines")
+}
+
+// A reason that is only whitespace is an empty one: it would render a
+// heading over nothing, which is what every other section here avoids.
+func (s *detailTestSuite) TestOmitsAWhitespaceOnlyCloseReason() {
+	issue := &beads.Issue{ID: "bv-1", Title: "T", Description: "only this", CloseReason: "   \n  "}
+	m := s.newModel(70, 40)
+	m.SetIssue(issue, beads.NewSnapshot([]beads.Issue{*issue}))
+
+	out := ansi.Strip(m.View())
+	s.Contains(out, "only this", "the one section that IS present must actually render")
+	s.NotContains(out, "Close Reason")
+}
+
+// lineOf reports the index of the first line of out containing want, or -1.
+func lineOf(out, want string) int {
+	for i, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, want) {
+			return i
+		}
+	}
+
+	return -1
+}
+
 // AMENDMENT — the status was never actually asserted.
 //
 // s.Contains(out, "bv-2") and s.Contains(out, "the blocker") both hold for

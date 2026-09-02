@@ -107,15 +107,25 @@ func (m *Model) renderDeps() string {
 	return strings.Join(parts, "\n")
 }
 
-// renderProse renders the four prose fields as markdown, each under its own
+// renderProse renders the five prose fields as markdown, each under its own
 // heading and each shown only when non-empty — an empty section would be a
 // heading over nothing.
+//
+// A close reason belongs here rather than beside the "closed" date in
+// renderMeta: br close --reason-file accepts a reason spanning paragraphs,
+// and a scalar metadata row can only escape those newlines. It comes last,
+// after Notes, because that is where br show puts it — a reader should not
+// have to learn two orders for the same record. It is gated on the reason
+// alone and not on ClosedAt, for the same reason: a reason left behind on a
+// reopened issue is data the workspace still carries, and bv renders rather
+// than validates.
 func (m *Model) renderProse() string {
 	sections := []proseSection{
 		{"Description", m.issue.Description},
 		{"Design", m.issue.Design},
 		{"Acceptance Criteria", m.issue.AcceptanceCriteria},
 		{"Notes", m.issue.Notes},
+		{"Close Reason", m.issue.CloseReason},
 	}
 
 	var parts []string
