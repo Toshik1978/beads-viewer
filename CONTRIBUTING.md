@@ -23,7 +23,7 @@ still genuinely useful even when they go unanswered for a while.
 
 ## Prerequisites
 
-- **Go 1.26+**, as pinned in `go.mod`. Everything builds with
+- **Go 1.27+**, as pinned in `go.mod`. Everything builds with
   `CGO_ENABLED=0`; there is no C toolchain to install.
 - **[go-task](https://taskfile.dev)** — all automation is driven through
   `Taskfile.yml`.

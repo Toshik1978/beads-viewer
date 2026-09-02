@@ -46,7 +46,7 @@ Each archive contains the `bv` binary alongside `LICENSE` and this
 go install github.com/Toshik1978/beads-viewer/cmd/bv@latest
 ```
 
-This requires a Go toolchain (`go.mod` currently targets Go 1.26) and builds
+This requires a Go toolchain (`go.mod` currently targets Go 1.27) and builds
 with `CGO_ENABLED=0`.
 
 ## Usage

@@ -6,7 +6,7 @@
 # workflows' own pin and the gate went red locally while CI stayed green.
 # `latest` on both sides removes the disagreement rather than the movement.
 [tools]
-go = "1.26"
+go = "1.27"
 golangci-lint = "latest"
 goreleaser = "2"
 git-cliff = "2"
