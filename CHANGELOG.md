@@ -9,6 +9,55 @@ Versions follow [semver](https://semver.org). Commits follow
 
 ---
 
+## v1.7.1 — 2026-09-02
+
+A field `br` writes and `bv` never showed you. Closing an issue with a reason
+— `br close --reason`, or `--reason-file` for something longer than a line —
+records prose on the issue, and the detail pane had no section for it. The
+text was decoded and then dropped on the floor, so the only way to read your
+own close reason was to leave `bv` and run `br show`.
+
+**Nothing about the interface changes.** No key is added, removed or
+reassigned, no issue's blocked or ready state moves, and what the filter
+matches is unchanged. One section appears in the detail pane where there was
+none.
+
+**If you build from source, `bv` now needs Go 1.27.** The prebuilt archives
+below are unaffected — this only concerns `go install` and `go build`.
+
+### The detail pane shows a close reason
+
+- A non-empty `close_reason` renders under its own **Close Reason** heading,
+  last, after Notes. That is where `br show` puts it, so the two agree on
+  where to look.
+- It is rendered as markdown like Design and Notes, not as a metadata value.
+  This is the point of the change: a reason written across paragraphs was the
+  case that had nowhere to go, and a scalar row can only escape its newlines.
+- Shown whenever the reason is non-empty, whether or not the issue is closed.
+  A reason left behind on a reopened issue is still what the workspace says,
+  and `bv` renders rather than validates.
+- An empty or whitespace-only reason renders nothing at all, like every other
+  section here.
+
+### Under the hood
+
+- The Go floor moves from 1.26 to 1.27. No source file changed for it.
+- `.mise.toml` and both workflows now track the same golangci-lint release
+  instead of a floating local pin against a fixed CI one. They had drifted
+  apart, and the gate was failing locally while passing in CI on code neither
+  had touched.
+
+### Bug Fixes
+
+- fix(detail): render a close reason as prose ([18b80af](https://github.com/Toshik1978/beads-viewer/commit/18b80af1f1874ec270b1efa329049db7edf988e7))
+
+### Others
+
+- build(lint): track the latest golangci-lint, and adopt gofumpt's extra rules ([62305cc](https://github.com/Toshik1978/beads-viewer/commit/62305cca867c709016fd3698da1f4f30e1cbd4ab))
+- build(go): raise the floor to Go 1.27 ([fd3b088](https://github.com/Toshik1978/beads-viewer/commit/fd3b0884694d222ea993de667e19208e07263299))
+
+---
+
 ## v1.7.0 — 2026-08-22
 
 Two things you could not do, in the two places you spend the most time. A long
