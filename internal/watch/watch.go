@@ -90,7 +90,8 @@ func (w *Watcher) Close() error {
 	w.closer.Do(func() {
 		close(w.done)
 		err = w.fsw.Close()
-		for range w.events { //nolint:revive // draining until run closes it is the wait
+		for range w.events {
+			// Draining until run closes it is the wait.
 		}
 	})
 	if err != nil {
