@@ -311,8 +311,6 @@ here.
 
 - Conventional commits: `feat:`, `fix:`, `test:`, `chore:`, `docs:`,
   `refactor:`.
-- **No `Co-Authored-By`, no `Claude-Session`, no AI-attribution trailer of any
-  kind.** Subject and body only.
 - Feature branches use the `feature/` prefix — never `feat/` or `feat-`.
 - Do not skip hooks; never pass `--no-verify`.
 

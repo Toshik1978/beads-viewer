@@ -88,7 +88,7 @@ if you forget. Do not skip hooks and do not reach for `--no-verify`.
   a commit missing from the release notes. `feat`, `fix`, `docs`, `chore`,
   `build`, `ci`, `test`, `perf`, `style`, `refactor` and `revert` are
   accepted, as is a `!` breaking-change marker. Write the subject for someone
-  who was not there. No AI-attribution trailers of any kind.
+  who was not there.
 - **Tests use testify suites, one entry point per package.** Exactly one
   top-level `func Test<Package>(t *testing.T)`, which does nothing but
   `suite.Run` each suite; every assertion is a suite method. A bare
