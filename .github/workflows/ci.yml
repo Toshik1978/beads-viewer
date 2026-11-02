@@ -19,6 +19,14 @@ on:
       - 'CONTRIBUTING.md'
       - 'docs/ARCHITECTURE.md'
       - 'docs/RELEASING.md'
+  # Weekly, against main with no commit: CI installs the newest Go patch
+  # (check-latest), runs golangci-lint `latest`, and govulncheck reads a live
+  # advisory database, so main can go red without a change here.
+  # A Go patch or a linter release adds a finding, and without this run the
+  # first job to notice is whichever PR happens to come next (usually a
+  # Dependabot one), which then fails for a reason that is not its own.
+  schedule:
+    - cron: '22 4 * * 1'
 
 permissions:
   contents: read
