@@ -172,7 +172,8 @@ jobs:
           cache: true
           check-latest: true
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: $(go env GOPATH)/bin/govulncheck ./...
+      - run: |
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
   # Feeds the README badges from a public gist. The 80% floor sits well below
   # the measured 90.8% on purpose: that far below, it fires only on a collapse
